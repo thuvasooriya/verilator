@@ -193,6 +193,7 @@ public:
         isHideLocal(fromp->isHideLocal());
         isHideProtected(fromp->isHideProtected());
         isVirtual(fromp->isVirtual());
+        isStatic(fromp->isStatic());
         lifetime(fromp->lifetime());
         underGenerate(fromp->underGenerate());
     }
@@ -1714,12 +1715,16 @@ class AstTypedef final : public AstNode {
     string m_name;
     string m_tag;  // Holds the string of the verilator tag -- used in XML output.
     bool m_attrPublic = false;
+    bool m_isHideLocal : 1;  // Verilog local
+    bool m_isHideProtected : 1;  // Verilog protected
 
 public:
     AstTypedef(FileLine* fl, const string& name, AstNode* attrsp, VFlagChildDType,
                AstNodeDType* dtp)
         : ASTGEN_SUPER_Typedef(fl)
-        , m_name{name} {
+        , m_name{name}
+        , m_isHideLocal{false}
+        , m_isHideProtected{false} {
         childDTypep(dtp);  // Only for parser
         addAttrsp(attrsp);
         dtypep(nullptr);  // V3Width will resolve
@@ -1738,6 +1743,10 @@ public:
     void name(const string& flag) override { m_name = flag; }
     bool attrPublic() const { return m_attrPublic; }
     void attrPublic(bool flag) { m_attrPublic = flag; }
+    bool isHideLocal() const { return m_isHideLocal; }
+    void isHideLocal(bool flag) { m_isHideLocal = flag; }
+    bool isHideProtected() const { return m_isHideProtected; }
+    void isHideProtected(bool flag) { m_isHideProtected = flag; }
     void tag(const string& text) override { m_tag = text; }
     string tag() const override { return m_tag; }
 };
@@ -1839,6 +1848,7 @@ class AstVar final : public AstNode {
     bool m_isForcedByCode : 1;  // May be forced/released from AstAssignForce/AstRelease
     bool m_isWrittenByDpi : 1;  // This variable can be written by a DPI Export
     bool m_isWrittenBySuspendable : 1;  // This variable can be written by a suspendable process
+    bool m_ignorePostWrite : 1;  // Ignore writes in 'Post' blocks during ordering
 
     void init() {
         m_ansi = false;
@@ -1883,6 +1893,7 @@ class AstVar final : public AstNode {
         m_isForcedByCode = false;
         m_isWrittenByDpi = false;
         m_isWrittenBySuspendable = false;
+        m_ignorePostWrite = false;
         m_attrClocker = VVarAttrClocker::CLOCKER_UNKNOWN;
     }
 
@@ -2038,6 +2049,8 @@ public:
     void setWrittenByDpi() { m_isWrittenByDpi = true; }
     bool isWrittenBySuspendable() const { return m_isWrittenBySuspendable; }
     void setWrittenBySuspendable() { m_isWrittenBySuspendable = true; }
+    bool ignorePostWrite() const { return m_ignorePostWrite; }
+    void setIgnorePostWrite() { m_ignorePostWrite = true; }
 
     // METHODS
     void name(const string& name) override { m_name = name; }
@@ -2061,6 +2074,9 @@ public:
     bool isInternal() const { return m_isInternal; }
     bool isSignal() const { return varType().isSignal(); }
     bool isNet() const { return varType().isNet(); }
+    bool isWor() const { return varType().isWor(); }
+    bool isWand() const { return varType().isWand(); }
+    bool isWiredNet() const { return varType().isWiredNet(); }
     bool isTemp() const { return varType().isTemp(); }
     bool isToggleCoverable() const {
         return ((isIO() || isSignal())

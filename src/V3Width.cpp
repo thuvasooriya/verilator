@@ -1853,13 +1853,11 @@ class WidthVisitor final : public VNVisitor {
             if (AstNodeDType* typeofDtp = VN_CAST(nodep->typeofp(), NodeDType)) {
                 // It's directly a type, e.g. "type(int)"
                 typeofDtp = iterateEditMoveDTypep(nodep, typeofDtp);  // Changes typeofp
-                nodep->typedefp(nullptr);
                 nodep->refDTypep(typeofDtp);
             } else {
                 // Type comes from expression's type, e.g. "type(variable)"
                 userIterateAndNext(nodep->typeofp(), WidthVP{SELF, BOTH}.p());
                 AstNode* const typeofp = nodep->typeofp();
-                nodep->typedefp(nullptr);
                 nodep->refDTypep(typeofp->dtypep());
                 VL_DO_DANGLING(typeofp->unlinkFrBack()->deleteTree(), typeofp);
             }
@@ -1873,7 +1871,6 @@ class WidthVisitor final : public VNVisitor {
             // this node's childDTypep
             userIterate(nodep->subDTypep(), nullptr);
             nodep->refDTypep(iterateEditMoveDTypep(nodep, nodep->subDTypep()));
-            nodep->typedefp(nullptr);  // Note until line above subDTypep() may have followed this
             // Widths are resolved, but special iterate to check for recursion
             userIterate(nodep->subDTypep(), nullptr);
         }
@@ -1883,6 +1880,7 @@ class WidthVisitor final : public VNVisitor {
         nodep->dtypeFrom(nodep->subDTypep());
         nodep->widthFromSub(nodep->subDTypep());
         UINFO(4, "dtWidthed " << nodep << endl);
+        // No nodep->typedefp(nullptr) for now; V3WidthCommit needs to check accesses
         nodep->doingWidth(false);
     }
     void visit(AstTypedef* nodep) override {
@@ -1923,32 +1921,12 @@ class WidthVisitor final : public VNVisitor {
             // elimination should do much the same
             // Form: "( ((v > size) ? false : enum_valid[v[N:0]])
             //          ? ExprStmt(ExprAssign(out, Cast(v, type)), 1) : 0)"
-            auto* const enumDtp = VN_AS(toDtp, EnumDType);
+            AstEnumDType* const enumDtp = VN_AS(toDtp, EnumDType);
             UASSERT_OBJ(enumDtp, nodep, "$cast determined as enum, but not enum type");
-            const uint64_t maxval = enumMaxValue(nodep, enumDtp);
-            const bool assoc = maxval > ENUM_LOOKUP_BITS;
-            AstNodeExpr* testp = nullptr;
+            AstNodeExpr* const testp
+                = enumTestValid(nodep->fromp()->cloneTreePure(false), enumDtp);
             FileLine* const fl_novalue = new FileLine{fl};
             fl_novalue->warnOff(V3ErrorCode::ENUMVALUE, true);
-            if (assoc) {
-                AstVar* const varp = enumVarp(enumDtp, VAttrType::ENUM_VALID, true, 0);
-                testp = new AstAssocSel{fl_novalue, newVarRefDollarUnit(varp),
-                                        nodep->fromp()->cloneTreePure(false)};
-            } else {
-                const int selwidth = V3Number::log2b(maxval) + 1;  // Width to address a bit
-                AstVar* const varp
-                    = enumVarp(enumDtp, VAttrType::ENUM_VALID, false, (1ULL << selwidth) - 1);
-                FileLine* const fl_nowidth = new FileLine{fl};
-                fl_nowidth->warnOff(V3ErrorCode::WIDTH, true);
-                testp = new AstCond{
-                    fl,
-                    new AstGt{fl_nowidth, nodep->fromp()->cloneTreePure(false),
-                              new AstConst{fl_nowidth, AstConst::Unsized64{}, maxval}},
-                    new AstConst{fl, AstConst::BitFalse{}},
-                    new AstArraySel{fl, newVarRefDollarUnit(varp),
-                                    new AstSel{fl_novalue, nodep->fromp()->cloneTreePure(false), 0,
-                                               selwidth}}};
-            }
             newp = new AstCond{
                 fl, testp,
                 new AstExprStmt{fl,
@@ -3328,27 +3306,9 @@ class WidthVisitor final : public VNVisitor {
                     }
                 }
             }
-            // Need a runtime lookup table.  Yuk.
-            const uint64_t msbdim = enumMaxValue(nodep, adtypep);
-            const bool assoc = msbdim > ENUM_LOOKUP_BITS;
-            if (assoc) {
-                AstVar* const varp = enumVarp(adtypep, attrType, true, 0);
-                AstNode* const newp = new AstAssocSel{nodep->fileline(), newVarRefDollarUnit(varp),
-                                                      nodep->fromp()->unlinkFrBack()};
-                newp->dtypeFrom(adtypep);  // To prevent a later ENUMVALUE
-                nodep->replaceWith(newp);
-            } else {
-                const int selwidth = V3Number::log2b(msbdim) + 1;  // Width to address a bit
-                AstVar* const varp = enumVarp(adtypep, attrType, false, (1ULL << selwidth) - 1);
-                AstNode* const newp = new AstArraySel{
-                    nodep->fileline(), newVarRefDollarUnit(varp),
-                    // Select in case widths are off due to msblen!=width
-                    // We return "random" values if outside the range, which is fine
-                    // as next/previous on illegal values just need something good out
-                    new AstSel{nodep->fileline(), nodep->fromp()->unlinkFrBack(), 0, selwidth}};
-                newp->dtypeFrom(adtypep);  // To prevent a later ENUMVALUE
-                nodep->replaceWith(newp);
-            }
+            AstNodeExpr* const newp
+                = enumSelect(nodep->fromp()->unlinkFrBack(), adtypep, attrType);
+            nodep->replaceWith(newp);
             VL_DO_DANGLING(nodep->deleteTree(), nodep);
         } else {
             nodep->v3error("Unknown built-in enum method " << nodep->prettyNameQ());
@@ -3798,10 +3758,10 @@ class WidthVisitor final : public VNVisitor {
     }
     void methodCallIfaceRef(AstMethodCall* nodep, AstIfaceRefDType* adtypep) {
         AstIface* const ifacep = adtypep->ifacep();
-        UINFO(1, __FUNCTION__ << ":" << nodep << endl);
+        UINFO(5, __FUNCTION__ << ":" << nodep << endl);
         if (AstNodeFTask* const ftaskp
             = VN_CAST(m_memberMap.findMember(ifacep, nodep->name()), NodeFTask)) {
-            UINFO(1, __FUNCTION__ << "AstNodeFTask" << nodep << endl);
+            UINFO(5, __FUNCTION__ << "AstNodeFTask" << nodep << endl);
             userIterate(ftaskp, nullptr);
             if (ftaskp->isStatic()) {
                 AstNodeExpr* argsp = nullptr;
@@ -4408,9 +4368,9 @@ class WidthVisitor final : public VNVisitor {
                                 }
                                 memp = VN_AS(memp->nextp(), MemberDType);
                             }
-                        } else if (const AstNodeDType* nodedtypep
-                                   = VN_CAST(patp->keyp(), NodeDType)) {
+                        } else if (AstNodeDType* nodedtypep = VN_CAST(patp->keyp(), NodeDType)) {
                             // data_type: default_value
+                            userIterate(nodedtypep, WidthVP{SELF, BOTH}.p());
                             const string dtype = nodedtypep->dtypep()->prettyDTypeName(true);
                             const auto pair = dtypemap.emplace(dtype, patp);
                             if (!pair.second) {
@@ -4662,9 +4622,12 @@ class WidthVisitor final : public VNVisitor {
         for (AstPatMember* patp = VN_AS(nodep->itemsp(), PatMember); patp;
              patp = VN_AS(patp->nextp(), PatMember)) {
             patp->dtypep(arrayp->subDTypep());
-            AstNodeExpr* const valuep = patternMemberValueIterate(patp);
+            AstNodeExpr* const rhsp = patternMemberValueIterate(patp);
+            const bool rhsIsValue
+                = AstNode::computeCastable(rhsp->dtypep(), arrayp->subDTypep(), nullptr)
+                      .isAssignable();
             AstConsDynArray* const newap
-                = new AstConsDynArray{nodep->fileline(), true, valuep, false, newp};
+                = new AstConsDynArray{nodep->fileline(), rhsIsValue, rhsp, false, newp};
             newap->dtypeFrom(arrayp);
             newp = newap;
         }
@@ -4678,9 +4641,12 @@ class WidthVisitor final : public VNVisitor {
         for (AstPatMember* patp = VN_AS(nodep->itemsp(), PatMember); patp;
              patp = VN_AS(patp->nextp(), PatMember)) {
             patp->dtypep(arrayp->subDTypep());
-            AstNodeExpr* const valuep = patternMemberValueIterate(patp);
+            AstNodeExpr* const rhsp = patternMemberValueIterate(patp);
+            const bool rhsIsValue
+                = AstNode::computeCastable(rhsp->dtypep(), arrayp->subDTypep(), nullptr)
+                      .isAssignable();
             AstConsQueue* const newap
-                = new AstConsQueue{nodep->fileline(), true, valuep, false, newp};
+                = new AstConsQueue{nodep->fileline(), rhsIsValue, rhsp, false, newp};
             newap->dtypeFrom(arrayp);
             newp = newap;
         }
@@ -5328,6 +5294,10 @@ class WidthVisitor final : public VNVisitor {
         }
         nodep->text(newFormat);
         UINFO(9, "  Display out " << nodep->text() << endl);
+    }
+    void visit(AstCReturn* nodep) override {
+        assertAtStatement(nodep);
+        userIterateAndNext(nodep->lhsp(), WidthVP{SELF, BOTH}.p());
     }
     void visit(AstConstraintRef* nodep) override { userIterateChildren(nodep, nullptr); }
     void visit(AstDisplay* nodep) override {
@@ -7654,7 +7624,7 @@ class WidthVisitor final : public VNVisitor {
         }
         return pair.first->second;
     }
-    uint64_t enumMaxValue(const AstNode* errNodep, const AstEnumDType* adtypep) {
+    static uint64_t enumMaxValue(const AstNode* errNodep, const AstEnumDType* adtypep) {
         // Most enums unless overridden are 32 bits, so we size array
         // based on max enum value used.
         // Ideally we would have a fast algorithm when a number is
@@ -7663,9 +7633,10 @@ class WidthVisitor final : public VNVisitor {
         uint64_t maxval = 0;
         for (const AstEnumItem* itemp = adtypep->itemsp(); itemp;
              itemp = VN_AS(itemp->nextp(), EnumItem)) {
-            const AstConst* const vconstp = VN_AS(itemp->valuep(), Const);
+            const AstConst* const vconstp = VN_CAST(itemp->valuep(), Const);
             UASSERT_OBJ(vconstp, errNodep, "Enum item without constified value");
-            if (vconstp->toUQuad() >= maxval) maxval = vconstp->toUQuad();
+            if (!vconstp->num().isAnyXZ() && vconstp->toUQuad() >= maxval)
+                maxval = vconstp->toUQuad();
         }
         if (adtypep->itemsp()->width() > 64) {
             errNodep->v3warn(E_UNSUPPORTED,
@@ -7674,7 +7645,8 @@ class WidthVisitor final : public VNVisitor {
         }
         return maxval;
     }
-    AstVar* enumVarp(AstEnumDType* const nodep, VAttrType attrType, bool assoc, uint32_t msbdim) {
+    static AstVar* enumVarp(AstEnumDType* const nodep, VAttrType attrType, bool assoc,
+                            uint32_t msbdim) {
         // Return a variable table which has specified dimension properties for this variable
         const auto pair = nodep->tableMap().emplace(attrType, nullptr);
         if (pair.second) {
@@ -7703,7 +7675,7 @@ class WidthVisitor final : public VNVisitor {
             v3Global.rootp()->typeTablep()->addTypesp(vardtypep);
             AstVar* const varp = new AstVar{nodep->fileline(), VVarType::MODULETEMP,
                                             "__Venumtab_" + VString::downcase(attrType.ascii())
-                                                + cvtToStr(m_dtTables++),
+                                                + cvtToStr(nodep->uniqueNum()),
                                             vardtypep};
             varp->lifetime(VLifetime::STATIC);
             varp->isConst(true);
@@ -7735,19 +7707,21 @@ class WidthVisitor final : public VNVisitor {
                     AstEnumItem* const nextp = VN_AS(itemp->nextp(), EnumItem);
                     const AstConst* const vconstp = VN_AS(itemp->valuep(), Const);
                     UASSERT_OBJ(vconstp, nodep, "Enum item without constified value");
-                    const uint64_t i = vconstp->toUQuad();
-                    if (attrType == VAttrType::ENUM_NAME) {
-                        values[i]
-                            = new AstConst{nodep->fileline(), AstConst::String{}, itemp->name()};
-                    } else if (attrType == VAttrType::ENUM_NEXT) {
-                        values[i]
-                            = (nextp ? nextp : firstp)->valuep()->cloneTree(false);  // A const
-                    } else if (attrType == VAttrType::ENUM_PREV) {
-                        values[i] = prevp->valuep()->cloneTree(false);  // A const
-                    } else if (attrType == VAttrType::ENUM_VALID) {
-                        values[i] = new AstConst{nodep->fileline(), AstConst::BitTrue{}};
-                    } else {
-                        nodep->v3fatalSrc("Bad case");
+                    if (!vconstp->num().isAnyXZ()) {  // Can 2-state runtime decode
+                        const uint64_t i = vconstp->toUQuad();
+                        if (attrType == VAttrType::ENUM_NAME) {
+                            values[i] = new AstConst{nodep->fileline(), AstConst::String{},
+                                                     itemp->name()};
+                        } else if (attrType == VAttrType::ENUM_NEXT) {
+                            values[i]
+                                = (nextp ? nextp : firstp)->valuep()->cloneTree(false);  // A const
+                        } else if (attrType == VAttrType::ENUM_PREV) {
+                            values[i] = prevp->valuep()->cloneTree(false);  // A const
+                        } else if (attrType == VAttrType::ENUM_VALID) {
+                            values[i] = new AstConst{nodep->fileline(), AstConst::BitTrue{}};
+                        } else {
+                            nodep->v3fatalSrc("Bad case");
+                        }
                     }
                     prevp = itemp;
                     itemp = nextp;
@@ -7761,10 +7735,65 @@ class WidthVisitor final : public VNVisitor {
                     if (values[i]) initp->addIndexValuep(i, values[i]);
                 }
             }
-            userIterate(varp, nullptr);  // May have already done $unit so must do this var
+            varp->didWidth(true);  // May have already done $unit so must do this var
             pair.first->second = varp;
         }
         return pair.first->second;
+    }
+
+    static AstNodeExpr* enumSelect(AstNodeExpr* nodep, AstEnumDType* adtypep, VAttrType attrType) {
+        // Return expression to get given attrType information from a enum's value (nodep)
+        // Need a runtime lookup table.  Yuk.
+        const uint64_t msbdim = enumMaxValue(nodep, adtypep);
+        const bool assoc = msbdim > ENUM_LOOKUP_BITS;
+        AstNodeExpr* newp;
+        if (assoc) {
+            AstVar* const varp = enumVarp(adtypep, attrType, true, 0);
+            newp = new AstAssocSel{nodep->fileline(), newVarRefDollarUnit(varp), nodep};
+        } else {
+            const int selwidth = V3Number::log2b(msbdim) + 1;  // Width to address a bit
+            AstVar* const varp = enumVarp(adtypep, attrType, false, (1ULL << selwidth) - 1);
+            newp = new AstArraySel{
+                nodep->fileline(), newVarRefDollarUnit(varp),
+                // Select in case widths are off due to msblen!=width
+                // We return "random" values if outside the range, which is fine
+                // as next/previous on illegal values just need something good out
+                new AstSel{nodep->fileline(), nodep, 0, selwidth}};
+        }
+        if (attrType == VAttrType::ENUM_NAME) {
+            newp->dtypeSetString();
+        } else if (attrType == VAttrType::ENUM_VALID) {
+            newp->dtypeSetBit();
+        } else {
+            newp->dtypeFrom(adtypep);  // To prevent a later ENUMVALUE
+        }
+        return newp;
+    }
+    static AstNodeExpr* enumTestValid(AstNodeExpr* valp, AstEnumDType* enumDtp) {
+        const uint64_t maxval = enumMaxValue(valp, enumDtp);
+        const bool assoc = maxval > ENUM_LOOKUP_BITS;
+        AstNodeExpr* testp = nullptr;
+        FileLine* const fl_novalue = new FileLine{valp->fileline()};
+        fl_novalue->warnOff(V3ErrorCode::ENUMVALUE, true);
+        fl_novalue->warnOff(V3ErrorCode::CMPCONST, true);
+        if (assoc) {
+            AstVar* const varp = enumVarp(enumDtp, VAttrType::ENUM_VALID, true, 0);
+            testp = new AstAssocSel{fl_novalue, newVarRefDollarUnit(varp), valp};
+        } else {
+            const int selwidth = V3Number::log2b(maxval) + 1;  // Width to address a bit
+            AstVar* const varp
+                = enumVarp(enumDtp, VAttrType::ENUM_VALID, false, (1ULL << selwidth) - 1);
+            FileLine* const fl_nowidth = new FileLine{fl_novalue};
+            fl_nowidth->warnOff(V3ErrorCode::WIDTH, true);
+            testp = new AstCond{
+                fl_novalue,
+                new AstGt{fl_nowidth, valp->cloneTreePure(false),
+                          new AstConst{fl_nowidth, AstConst::Unsized64{}, maxval}},
+                new AstConst{fl_novalue, AstConst::BitFalse{}},
+                new AstArraySel{fl_novalue, newVarRefDollarUnit(varp),
+                                new AstSel{fl_novalue, valp->cloneTreePure(false), 0, selwidth}}};
+        }
+        return testp;
     }
 
     PatVecMap patVectorMap(AstPattern* nodep, const VNumRange& range) {
@@ -7866,7 +7895,7 @@ class WidthVisitor final : public VNVisitor {
             VL_DO_DANGLING(pushDeletep(nodep), nodep);
         }
     }
-    AstVarRef* newVarRefDollarUnit(AstVar* nodep) {
+    static AstVarRef* newVarRefDollarUnit(AstVar* nodep) {
         AstVarRef* const varrefp = new AstVarRef{nodep->fileline(), nodep, VAccess::READ};
         varrefp->classOrPackagep(v3Global.rootp()->dollarUnitPkgAddp());
         return varrefp;

@@ -20,6 +20,7 @@ Ashutosh
 Ast
 Atmel
 Aurelien
+Badáň
 Bagri
 Balboni
 Baltazar
@@ -110,8 +111,10 @@ Eugen
 Fabrizio
 Faucher
 Faure
+Feinberg
 Fekete
 Ferrandi
+Filip
 Flachs
 Flavien
 Florian
@@ -522,6 +525,7 @@ basename
 bbox
 benchmarking
 biguint
+bindir
 biops
 bisonpre
 bitOpTree
@@ -872,6 +876,7 @@ phelter
 picoChip
 pinIndex
 pinout
+pkgdatadir
 plusargs
 pmos
 poping
@@ -936,6 +941,7 @@ redeclaring
 regs
 reloop
 replaceShiftOp
+reproducibility
 resetall
 respecified
 rodata
@@ -1025,6 +1031,8 @@ traceEverOn
 tran
 treei
 tri
+triand
+trior
 tristate
 tristates
 trunc
@@ -1100,6 +1108,7 @@ warmup
 waveforms
 whitespace
 widthed
+wor
 wreal
 writeb
 writeme
