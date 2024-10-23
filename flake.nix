@@ -14,9 +14,13 @@
     flake-utils.lib.eachDefaultSystem
     (system: let
       pkgs = import nixpkgs {
-        inherit sytem;
+        inherit system;
       };
       buildInputs = with pkgs; [
+        git
+        # g++
+        clang
+        # make
         autoconf
         flex
         bison
@@ -26,28 +30,30 @@
         zlib
         ccache
         mold
-        libgoogle-perftools
-        numactl
-        perl-doc
-        gdb
+        # libgoogle-perftools
+        # numactl
+        # perl-doc
+        clang-tools # clang-format
+        cmake
+        # gdb
         graphviz
         lcov
-        python3Packages.sphinx
-        python3Packages.sphinx_rtd_theme
-        python3Packages.breathe
-        python3Packages.ruff
-        python3Packages.yapf
-        python3Packages.astsee
-        libfl
+        # python3Packages.sphinx
+        # python3Packages.sphinx_rtd_theme
+        # python3Packages.breathe
+        # python3Packages.ruff
+        # python3Packages.yapf
+        # python3Packages.astsee
+        # libfl
         zlib
       ];
     in
       with pkgs; {
         devShells.default = mkShell {
           inherit buildInputs;
-          # shellHook = ''
-          #   export VERILATOR_ROOT="$PWD"
-          # '';
+          shellHook = ''
+            export VERILATOR_ROOT="$PWD"
+          '';
         };
       });
 }
