@@ -9,16 +9,10 @@
 
 import vltest_bootstrap
 
-test.scenarios('vlt')
+test.scenarios('simulator')
 
-out_filename = test.obj_dir + "/" + test.name + "_waiver_gen.vlt"
-waiver_filename = test.obj_dir + "/" + test.name + "_waiver.vlt"
+test.compile(verilator_flags2=['--assert'])
 
-test.compile(v_flags2=['--waiver-output', out_filename], fails=True)
-
-test.file_sed(out_filename, waiver_filename,
-              lambda line: re.sub(r'\/\/ lint_off', 'lint_off', line))
-
-test.compile(v_flags2=[waiver_filename])
+test.execute()
 
 test.passes()

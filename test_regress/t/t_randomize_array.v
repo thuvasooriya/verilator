@@ -8,11 +8,13 @@
 begin \
    longint prev_result; \
    int ok = 0; \
-   for (int i = 0; i < 10; i++) begin \
+   void'(cl.randomize()); \
+   prev_result = longint'(field); \
+   repeat(9) begin \
       longint result; \
       void'(cl.randomize()); \
       result = longint'(field); \
-      if (i > 0 && result != prev_result) ok = 1; \
+      if (result != prev_result) ok = 1; \
       prev_result = result; \
    end \
    if (ok != 1) $stop; \
@@ -61,10 +63,16 @@ class unconstrained_unpacked_array_test;
 
 endclass
 
+class Cls;
+  rand int x = 1;
+endclass
+
 class unconstrained_dynamic_array_test;
 
   rand int dynamic_array_1d[];
   rand int dynamic_array_2d[][];
+  rand Cls class_dynamic_array[];
+  rand Cls class_dynamic_array_null[];
 
   function new();
     // Initialize 1D dynamic array
@@ -81,6 +89,14 @@ class unconstrained_dynamic_array_test;
         dynamic_array_2d[i][j] = 'h0 + i + j;
       end
     end
+
+    class_dynamic_array = new[5];
+    foreach(class_dynamic_array[i]) begin
+      class_dynamic_array[i] = new;
+    end
+
+    class_dynamic_array_null = new[2];
+
   endfunction
 
   function void check_randomization();
@@ -91,6 +107,12 @@ class unconstrained_dynamic_array_test;
       foreach (dynamic_array_2d[i][j]) begin
         `check_rand(this, dynamic_array_2d[i][j])
       end
+    end
+    foreach (class_dynamic_array[i]) begin
+      `check_rand(this, class_dynamic_array[i].x)
+    end
+    foreach (class_dynamic_array_null[i]) begin
+      if (class_dynamic_array_null[i] != null) $stop;
     end
   endfunction
 

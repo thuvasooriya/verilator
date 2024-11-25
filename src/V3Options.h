@@ -279,7 +279,8 @@ private:
     bool m_relativeIncludes = false;  // main switch: --relative-includes
     bool m_reportUnoptflat = false;  // main switch: --report-unoptflat
     bool m_savable = false;         // main switch: --savable
-    bool m_std = true;              // main switch: --std
+    bool m_stdPackage = true;       // main switch: --std-package
+    bool m_stdWaiver = true;        // main switch: --std-waiver
     bool m_structsPacked = false;   // main switch: --structs-packed
     bool m_systemC = false;         // main switch: --sc: System C instead of simple C++
     bool m_stats = false;           // main switch: --stats
@@ -297,6 +298,7 @@ private:
     bool m_underlineZero = false;   // main switch: --underline-zero; undocumented old Verilator 2
     bool m_verilate = true;         // main switch: --verilate
     bool m_vpi = false;             // main switch: --vpi
+    bool m_waiverMultiline = false;  // main switch: --waiver-multiline
     bool m_xInitialEdge = false;    // main switch: --x-initial-edge
     bool m_xmlOnly = false;         // main switch: --xml-only
     bool m_jsonOnly = false;        // main switch: --json-only
@@ -384,6 +386,8 @@ private:
     bool m_fDeadAssigns;     // main switch: -fno-dead-assigns: remove dead assigns
     bool m_fDeadCells;   // main switch: -fno-dead-cells: remove dead cells
     bool m_fExpand;      // main switch: -fno-expand: expansion of C macros
+    bool m_fFuncBalanceCat = true;  // main switch: -fno-func-balance-cat: expansion of C macros
+    bool m_fFuncSplitCat = true;  // main switch: -fno-func-split-cat: expansion of C macros
     bool m_fGate;        // main switch: -fno-gate: gate wire elimination
     bool m_fInline;      // main switch: -fno-inline: module inlining
     bool m_fLife;        // main switch: -fno-life: variable lifetime
@@ -463,7 +467,8 @@ public:
     bool savable() const VL_MT_SAFE { return m_savable; }
     bool stats() const { return m_stats; }
     bool statsVars() const { return m_statsVars; }
-    bool std() const { return m_std; }
+    bool stdPackage() const { return m_stdPackage; }
+    bool stdWaiver() const { return m_stdWaiver; }
     bool structsPacked() const { return m_structsPacked; }
     bool assertOn() const { return m_assert; }  // assertOn as __FILE__ may be defined
     bool assertCaseOn() const { return m_assertCase || m_assert; }
@@ -542,6 +547,7 @@ public:
     bool reportUnoptflat() const { return m_reportUnoptflat; }
     bool verilate() const { return m_verilate; }
     bool vpi() const { return m_vpi; }
+    bool waiverMultiline() const { return m_waiverMultiline; }
     bool xInitialEdge() const { return m_xInitialEdge; }
     bool xmlOnly() const { return m_xmlOnly; }
     bool jsonOnly() const { return m_jsonOnly; }
@@ -674,6 +680,9 @@ public:
     bool fDeadAssigns() const { return m_fDeadAssigns; }
     bool fDeadCells() const { return m_fDeadCells; }
     bool fExpand() const { return m_fExpand; }
+    bool fFuncBalanceCat() const { return m_fFuncBalanceCat; }
+    bool fFuncSplitCat() const { return m_fFuncSplitCat; }
+    bool fFunc() const { return fFuncSplitCat() || fFuncBalanceCat(); }
     bool fGate() const { return m_fGate; }
     bool fInline() const { return m_fInline; }
     bool fLife() const { return m_fLife; }
@@ -734,6 +743,7 @@ public:
     static string getenvVERILATOR_ROOT();
     static string getenvVERILATOR_SOLVER();
     static string getStdPackagePath();
+    static string getStdWaiverPath();
     static string getSupported(const string& var);
     static bool systemCSystemWide();
     static bool systemCFound();  // SystemC installed, or environment points to it

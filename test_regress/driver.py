@@ -48,6 +48,8 @@ test = None
 Arg_Tests = []
 Quitting = False
 Vltmt_Threads = 3
+forker = None
+Start = None
 
 # So an 'import vltest_bootstrap' inside test files will do nothing
 sys.modules['vltest_bootstrap'] = {}
@@ -178,7 +180,7 @@ class Capabilities:
         if Capabilities._cached_have_solver is None:
             out = VtOs.run_capture('(z3 --help || cvc5 --help || cvc4 --help) 2>/dev/null',
                                    check=False)
-            Capabilities._cached_have_solver = bool('Usage' in out)
+            Capabilities._cached_have_solver = bool('usage' in out.casefold())
         return Capabilities._cached_have_solver
 
     @staticproperty
@@ -658,7 +660,7 @@ class VlTest:
         scen_dir = re.sub(r'^t/\.\./', '', scen_dir)
         # Not mkpath so error if try to build somewhere odd
         VtOs.mkdir_ok(scen_dir)
-        self.obj_dir = scen_dir + "/" + self.name
+        self.obj_dir = scen_dir + "/" + self.name + Args.obj_suffix
 
         define_opt = self._define_opt_calc()
 
@@ -683,7 +685,8 @@ class VlTest:
         self.all_run_flags = []
 
         self.pli_flags = [
-            "-I" + os.environ['VERILATOR_ROOT'] + "/include/vltstd", "-fPIC", "-shared"
+            "-I" + os.environ['VERILATOR_ROOT'] + "/include/vltstd",
+            "-I" + os.environ['VERILATOR_ROOT'] + "/include", "-fPIC", "-shared"
         ]
         if platform.system() == 'Darwin':
             self.pli_flags += ["-Wl,-undefined,dynamic_lookup"]
@@ -2404,12 +2407,12 @@ class VlTest:
                         self.error(self.top_filename + ":" + str(flineno) +
                                    ": Unknown CHECK request: " + line)
 
-    @staticmethod
-    def cfg_with_ccache() -> bool:
+    @staticproperty
+    def cfg_with_ccache() -> bool:  # pylint: disable=no-method-argument
         if VlTest._cached_cfg_with_ccache is None:
             mkf = VlTest._file_contents_static(os.environ['VERILATOR_ROOT'] +
                                                "/include/verilated.mk")
-            VlTest._cached_cfg_with_ccache = bool(re.match(r'OBJCACHE \?= ccache', mkf))
+            VlTest._cached_cfg_with_ccache = bool(re.search(r'OBJCACHE \?= ccache', mkf))
         return VlTest._cached_cfg_with_ccache
 
     def glob_some(self, pattern: str) -> list:
@@ -2691,7 +2694,6 @@ if __name__ == '__main__':
         sys.exit("%Error: TEST_REGRESS environment variable is already set")
     os.environ['TEST_REGRESS'] = os.getcwd()
 
-    forker = None
     Start = time.time()
     _Parameter_Next_Level = None
 
@@ -2742,6 +2744,10 @@ if __name__ == '__main__':
                         default=0,
                         type=int,
                         help='parallel job count (0=cpu count)')
+    parser.add_argument('--obj-suffix',
+                        action='store',
+                        default='',
+                        help='suffix to add to obj_ test directory name')
     parser.add_argument('--quiet',
                         action='store_true',
                         help='suppress output except failures and progress')

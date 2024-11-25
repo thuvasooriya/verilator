@@ -9,14 +9,8 @@
 
 import vltest_bootstrap
 
-test.scenarios('vlt')
-test.top_filename = "t/t_waiveroutput.v"
+test.scenarios('linter')
 
-out_filename = test.obj_dir + "/" + test.name + ".waiver_gen.out"
-waiver_filename = "t/" + test.name + ".vlt"
-
-test.compile(v_flags2=['-Wall', waiver_filename, '--waiver-output', out_filename])
-
-test.files_identical(out_filename, test.golden_filename)
+test.lint(verilator_flags2=['-no-std-waiver'])
 
 test.passes()

@@ -16,7 +16,7 @@ cmake_minimum_required(VERSION 3.15)
 cmake_policy(SET CMP0091 NEW) # Use MSVC_RUNTIME_LIBRARY to select the runtime
 project(
     Verilator
-    VERSION 5.029
+    VERSION 5.031
     HOMEPAGE_URL https://verilator.org
     LANGUAGES CXX
 )
@@ -173,6 +173,7 @@ install(
     PATTERN "include/verilated_config.h"
     PATTERN "include/*.[chv]"
     PATTERN "include/*.cpp"
+    PATTERN "include/*.vlt"
     PATTERN "include/*.sv"
     PATTERN "include/gtkwave/*.[chv]*"
     PATTERN "include/vltstd/*.[chv]*"

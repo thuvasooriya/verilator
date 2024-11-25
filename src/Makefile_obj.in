@@ -204,6 +204,7 @@ RAW_OBJS_PCH_ASTMT = \
 	V3EmitCPch.o \
 	V3EmitV.o \
 	V3File.o \
+	V3FuncOpt.o \
 	V3Global.o \
 	V3Hasher.o \
 	V3Number.o \
@@ -363,7 +364,7 @@ $(TGT): $(PREDEP_H) $(OBJS)
 .SECONDARY:
 
 %.gch: %
-	$(OBJCACHE) ${CXX} ${CXXFLAGS} ${CPPFLAGSWALL} ${CFG_CXXFLAGS_PCH} $< -o $@
+	$(OBJCACHE) ${CXX} ${CXXFLAGS} ${CPPFLAGSWALL} ${CFG_CXXFLAGS_PCH} -c $< -o $@
 %.o: %.cpp
 	$(OBJCACHE) ${CXX} ${CXXFLAGS} ${CPPFLAGSWALL} -c $< -o $@
 %.o: %.c

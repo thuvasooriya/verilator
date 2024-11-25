@@ -209,6 +209,12 @@ protected:
         m_packed = (numericUnpack != VSigning::NOSIGN);
         numeric(VSigning::fromBool(numericUnpack.isSigned()));
     }
+    AstNodeUOrStructDType(const AstNodeUOrStructDType& other)
+        : AstNodeDType(other)
+        , m_name(other.m_name)
+        , m_uniqueNum(uniqueNumInc())
+        , m_packed(other.m_packed)
+        , m_isFourstate(other.m_isFourstate) {}
 
 public:
     ASTGEN_MEMBERS_AstNodeUOrStructDType;
@@ -664,6 +670,11 @@ public:
         childDTypep(dtp);  // Only for parser
         dtypep(nullptr);  // V3Width will resolve
     }
+    AstDefImplicitDType(const AstDefImplicitDType& other)
+        : AstNodeDType(other)
+        , m_name(other.m_name)
+        , m_containerp(other.m_containerp)
+        , m_uniqueNum(uniqueNumInc()) {}
     ASTGEN_MEMBERS_AstDefImplicitDType;
     int uniqueNum() const { return m_uniqueNum; }
     bool same(const AstNode* samep) const override {
@@ -793,6 +804,10 @@ public:
         dtypep(nullptr);  // V3Width will resolve
         widthFromSub(subDTypep());
     }
+    AstEnumDType(const AstEnumDType& other)
+        : AstNodeDType(other)
+        , m_name(other.m_name)
+        , m_uniqueNum(uniqueNumInc()) {}
     ASTGEN_MEMBERS_AstEnumDType;
 
     const char* broken() const override;
@@ -840,11 +855,12 @@ class AstIfaceRefDType final : public AstNodeDType {
     // @astgen ptr := m_ifacep : Optional[AstIface]  // Interface; cellp() should override
     // @astgen ptr := m_cellp : Optional[AstCell]  // When exact parent cell known; not a guess
     // @astgen ptr := m_modportp : Optional[AstModport]  // nullptr = unlinked or no modport
-    bool m_virtual = false;  // True if virtual interface
     FileLine* m_modportFileline;  // Where modport token was
     string m_cellName;  // "" = no cell, such as when connects to 'input' iface
     string m_ifaceName;  // Interface name
     string m_modportName;  // "" = no modport
+    bool m_portDecl = false;  // Interface_port_declaration
+    bool m_virtual = false;  // True if virtual interface
 public:
     AstIfaceRefDType(FileLine* fl, const string& cellName, const string& ifaceName)
         : ASTGEN_SUPER_IfaceRefDType(fl)
@@ -880,6 +896,8 @@ public:
     bool similarDType(const AstNodeDType* samep) const override { return this == samep; }
     int widthAlignBytes() const override { return 0; }
     int widthTotalBytes() const override { return 0; }
+    bool isPortDecl() const { return m_portDecl; }
+    void isPortDecl(bool flag) { m_portDecl = flag; }
     bool isVirtual() const { return m_virtual; }
     void isVirtual(bool flag) {
         m_virtual = flag;
@@ -889,6 +907,7 @@ public:
     string cellName() const { return m_cellName; }
     void cellName(const string& name) { m_cellName = name; }
     string ifaceName() const { return m_ifaceName; }
+    string ifaceNameQ() const { return "'" + prettyName(ifaceName()) + "'"; }
     void ifaceName(const string& name) { m_ifaceName = name; }
     string modportName() const { return m_modportName; }
     AstIface* ifaceViaCellp() const;  // Use cellp or ifacep

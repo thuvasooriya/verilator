@@ -8,7 +8,43 @@ The changes in each Verilator version are described below.  The
 contributors that suggested a given feature are shown in []. Thanks!
 
 
-Verilator 5.029 devel
+Verilator 5.031 devel
+==========================
+
+**Minor:**
+
+* Support queue's assignment `push_back/push_front('{})` (#5585) (#5586). [Yilou Wang]
+* Support basic constrained random for multi-dimensional dynamic array and queue (#5591). [Yilou Wang]
+* Support vpiDefName (#3906) (#5572). [Krzysztof Starecki]
+* Support parameter names in pattern initialization (#5593) (#5596). [Greg Davill]
+* Support randomize size constraints with restrictions (#5582 partial) (#5611). [Ryszard Rozak, Antmicro Ltd.]
+* Support `pure constraint`.
+* Add `--no-std-waiver` and default reading of standard lint waivers file (#5607).
+* Add `--no-std-package` as subset-alias of `--no-std` (#5607).
+* Add `lint_off --contents` in configuration files (#5606).
+* Add `--waiver-multiline` for context-sensitive `--waiver-output` (#5608).
+* Add error on illegal enum base type (#3010). [Iztok Jeras]
+* Add error on `wait` with missing `.triggered` (#4457).
+* Add error when improperly storing to parameter (#5147). [Gökçe Aydos]
+* Add coverage point hierarchy to coverage reports (#5575) (#5576). [Andrew Nolte]
+* Add warning on global constraints (#5625). [Ryszard Rozak, Antmicro Ltd.]
+* Add error on `solve before` or soft constraints of `randc` variable.
+* Improve concatenation performance (#5598) (#5599) (#5602). [Geza Lore]
+* Fix dotted reference in delay value (#2410).
+* Fix `function fork...join_none` regression with unknown type (#4449).
+* Fix can't locate scope error in interface task delayed assignment (#5462) (#5568). [Zhou Shen]
+* Fix BLKANDNBLK for for VARXREFs (#5569). [Todd Strader]
+* Fix VPI error instead of fatal for vpi_get_value() on large signals (#5571). [Todd Strader]
+* Fix --output-groups leftover files issue (#5574). [Todd Strader]
+* Fix slow unsized number parsing (#5577). [Geza Lore]
+* Fix negative assignment pattern keys (#5580). [Iztok Jeras]
+* Fix duplicate scope identifiers decoding (#5584). [Bartłomiej Chmiel, Antmicro Ltd.]
+* Fix `rand` dynamic arrays with null handles (#5594). [Ryszard Rozak, Antmicro Ltd.]
+* Fix NBAs to unpacked arrays of unpacked structs (#5603). [Geza Lore]
+* Fix array of struct member overwrites on member update (#5605) (#5618) (#5628). [sumpster]
+
+
+Verilator 5.030 2024-10-27
 ==========================
 
 **Major:**
@@ -36,6 +72,7 @@ Verilator 5.029 devel
 * Support ccache when compiling Verilated files with cmake.
 * Support `local` and `protected` on `typedef` (#5460).
 * Support unconstrained randomization for associative array and queue (#5515). [Yilou Wang]
+* Support `rand` dynamic arrays of objects (#5557) (#5564). [Ryszard Rozak, Antmicro Ltd.]
 * Add error on misused genvar (#408). [Alex Solomatnikov]
 * Add error on instances without parenthesis.
 * Add Docker pre-commit hook (#5238) (#5452). [Chris Bachhuber]
@@ -96,6 +133,12 @@ Verilator 5.029 devel
 * Fix container reduction methods (#5542). [Krzysztof Boroński]
 * Fix complex user type problem with `--x-assign` (#5543). [Todd Strader]
 * Fix long module names crashing string handling (#5546). [Filip Badáň]
+* Fix array trace splitting (#5549). [Todd Strader]
+* Fix queue element access (#5551). [Ryszard Rozak, Antmicro Ltd.]
+* Fix struct literal on pattern assignment (#5552) (#5559). [Todd Strader]
+* Fix build on gcc when using the Spack wrapper (#5555). [Eric Müller]
+* Fix enum name method (#5563). [Todd Strader]
+* Fix `$countbits` in assert with non-tristates (#5566). [Shou-Li Hsu]
 
 
 Verilator 5.028 2024-08-21

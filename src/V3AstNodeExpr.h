@@ -1191,6 +1191,8 @@ class AstDot final : public AstNodeExpr {
     // These are eliminated in the link stage
     // @astgen op1 := lhsp : AstNodeExpr
     // @astgen op2 := rhsp : AstNodeExpr
+    //
+    // We don't have a list of elements as it's probably legal to do '(foo.bar).(baz.bap)'
     const bool m_colon;  // Is a "::" instead of a "." (lhs must be package/class)
 public:
     AstDot(FileLine* fl, bool colon, AstNodeExpr* lhsp, AstNodeExpr* rhsp)
@@ -1728,11 +1730,12 @@ public:
 class AstPatMember final : public AstNodeExpr {
     // Verilog '{a} or '{a{b}}
     // Parents: AstPattern
-    // Children: expression, AstPattern, replication count
+    // Children: expression, AstPattern, replication count, decoded nodep if TEXT
     // Expression to assign or another AstPattern (list if replicated)
     // @astgen op1 := lhssp : List[AstNodeExpr]
     // @astgen op2 := keyp : Optional[AstNode]
     // @astgen op3 := repp : Optional[AstNodeExpr]  // replication count, or nullptr for count 1
+    // @astgen op4 := varrefp : Optional[AstNodeExpr]  // Decoded variable if TEXT
     bool m_default = false;
 
 public:
@@ -4424,6 +4427,8 @@ class AstSelBit final : public AstNodePreSel {
     // Single bit range extraction, perhaps with non-constant selection or array selection
     // Gets replaced during link with AstArraySel or AstSel
     // @astgen alias op2 := bitp
+private:
+    VAccess m_access;  // Left hand side assignment
 public:
     AstSelBit(FileLine* fl, AstNodeExpr* fromp, AstNodeExpr* bitp)
         : ASTGEN_SUPER_SelBit(fl, fromp, bitp, nullptr) {
@@ -4431,6 +4436,8 @@ public:
                     "not coded to create after dtypes resolved");
     }
     ASTGEN_MEMBERS_AstSelBit;
+    VAccess access() const { return m_access; }
+    void access(const VAccess& flag) { m_access = flag; }
 };
 class AstSelExtract final : public AstNodePreSel {
     // Range extraction, gets replaced with AstSel

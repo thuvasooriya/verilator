@@ -807,7 +807,6 @@ class AstCell final : public AstNode {
     string m_origName;  // Original name before dot addition
     string m_modName;  // Module the cell instances
     bool m_hasIfaceVar : 1;  // True if a Var has been created for this cell
-    bool m_hasNoParens : 1;  // Instantiation has no parenthesis
     bool m_recursive : 1;  // Self-recursive module
     bool m_trace : 1;  // Trace this cell
 public:
@@ -819,7 +818,6 @@ public:
         , m_origName{instName}
         , m_modName{modName}
         , m_hasIfaceVar{false}
-        , m_hasNoParens{false}
         , m_recursive{false}
         , m_trace{true} {
         this->addPinsp(pinsp);
@@ -844,8 +842,6 @@ public:
     void modp(AstNodeModule* nodep) { m_modp = nodep; }
     bool hasIfaceVar() const { return m_hasIfaceVar; }
     void hasIfaceVar(bool flag) { m_hasIfaceVar = flag; }
-    bool hasNoParens() const { return m_hasNoParens; }
-    void hasNoParens(bool flag) { m_hasNoParens = flag; }
     void trace(bool flag) { m_trace = flag; }
     bool isTrace() const { return m_trace; }
     void recursive(bool flag) { m_recursive = flag; }
@@ -1026,7 +1022,8 @@ class AstConstraint final : public AstNode {
     // Constraint
     // @astgen op1 := itemsp : List[AstNode]
     string m_name;  // Name of constraint
-    bool m_isStatic = false;  // static constraint
+    bool m_isKwdPure = false;  // Pure constraint
+    bool m_isStatic = false;  // Static constraint
 public:
     AstConstraint(FileLine* fl, const string& name, AstNode* itemsp)
         : ASTGEN_SUPER_Constraint(fl)
@@ -1034,11 +1031,15 @@ public:
         this->addItemsp(itemsp);
     }
     ASTGEN_MEMBERS_AstConstraint;
+    void dump(std::ostream& str) const override;
+    void dumpJson(std::ostream& str) const override;
     string name() const override VL_MT_STABLE { return m_name; }  // * = Scope name
     bool isGateOptimizable() const override { return false; }
     bool isPredictOptimizable() const override { return false; }
     bool maybePointedTo() const override VL_MT_SAFE { return true; }
     bool same(const AstNode* /*samep*/) const override { return true; }
+    void isKwdPure(bool flag) { m_isKwdPure = flag; }
+    bool isKwdPure() const { return m_isKwdPure; }
     void isStatic(bool flag) { m_isStatic = flag; }
     bool isStatic() const { return m_isStatic; }
 };
@@ -2069,7 +2070,8 @@ public:
     bool isTristate() const { return m_tristate; }
     bool isPrimaryIO() const VL_MT_SAFE { return m_primaryIO; }
     bool isPrimaryInish() const { return isPrimaryIO() && isNonOutput(); }
-    bool isIfaceRef() const { return (varType() == VVarType::IFACEREF); }
+    bool isIfaceRef() const { return varType() == VVarType::IFACEREF; }
+    void setIfaceRef() { m_varType = VVarType::IFACEREF; }
     bool isIfaceParent() const { return m_isIfaceParent; }
     bool isInternal() const { return m_isInternal; }
     bool isSignal() const { return varType().isSignal(); }
@@ -2085,11 +2087,11 @@ public:
                 && !isSc() && !isPrimaryIO() && !isConst() && !isDouble() && !isString());
     }
     bool isClassMember() const { return varType() == VVarType::MEMBER; }
-    bool isStatementTemp() const { return (varType() == VVarType::STMTTEMP); }
-    bool isXTemp() const { return (varType() == VVarType::XTEMP); }
+    bool isStatementTemp() const { return varType() == VVarType::STMTTEMP; }
+    bool isXTemp() const { return varType() == VVarType::XTEMP; }
     bool isParam() const { return varType().isParam(); }
-    bool isGParam() const { return (varType() == VVarType::GPARAM); }
-    bool isGenVar() const { return (varType() == VVarType::GENVAR); }
+    bool isGParam() const { return varType() == VVarType::GPARAM; }
+    bool isGenVar() const { return varType() == VVarType::GENVAR; }
     bool isBitLogic() const {
         AstBasicDType* bdtypep = basicp();
         return bdtypep && bdtypep->isBitLogic();
@@ -2758,14 +2760,16 @@ public:
 class AstConstraintExpr final : public AstNodeStmt {
     // Constraint expression
     // @astgen op1 := exprp : AstNodeExpr
-    bool m_isSoft = false;  // Soft constraint expression
     bool m_isDisableSoft = false;  // Disable soft constraint expression
+    bool m_isSoft = false;  // Soft constraint expression
 public:
     AstConstraintExpr(FileLine* fl, AstNodeExpr* exprp)
         : ASTGEN_SUPER_ConstraintExpr(fl) {
         this->exprp(exprp);
     }
     ASTGEN_MEMBERS_AstConstraintExpr;
+    void dump(std::ostream& str) const override;
+    void dumpJson(std::ostream& str) const override;
     bool isGateOptimizable() const override { return false; }
     bool isPredictOptimizable() const override { return false; }
     bool same(const AstNode* /*samep*/) const override { return true; }

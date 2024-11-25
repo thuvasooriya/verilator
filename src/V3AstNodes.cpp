@@ -366,7 +366,26 @@ void AstConsQueue::dumpJson(std::ostream& str) const {
     dumpJsonBoolFunc(str, rhsIsValue);
     dumpJsonGen(str);
 }
-
+void AstConstraint::dump(std::ostream& str) const {
+    this->AstNode::dump(str);
+    if (isKwdPure()) str << " [KWDPURE]";
+    if (isStatic()) str << " [STATIC]";
+}
+void AstConstraint::dumpJson(std::ostream& str) const {
+    dumpJsonBoolFunc(str, isKwdPure);
+    dumpJsonBoolFunc(str, isStatic);
+    dumpJsonGen(str);
+}
+void AstConstraintExpr::dump(std::ostream& str) const {
+    this->AstNode::dump(str);
+    if (isDisableSoft()) str << " [DISSOFT]";
+    if (isSoft()) str << " [SOFT]";
+}
+void AstConstraintExpr::dumpJson(std::ostream& str) const {
+    dumpJsonBoolFunc(str, isDisableSoft);
+    dumpJsonBoolFunc(str, isSoft);
+    dumpJsonGen(str);
+}
 AstConst* AstConst::parseParamLiteral(FileLine* fl, const string& literal) {
     bool success = false;
     if (literal[0] == '"') {
@@ -1760,6 +1779,8 @@ const char* AstEnumDType::broken() const {
 void AstEnumItemRef::dumpJson(std::ostream& str) const { dumpJsonGen(str); }
 void AstIfaceRefDType::dump(std::ostream& str) const {
     this->AstNodeDType::dump(str);
+    if (isPortDecl()) str << " [PORTDECL]";
+    if (isVirtual()) str << " [VIRT]";
     if (cellName() != "") str << " cell=" << cellName();
     if (ifaceName() != "") str << " if=" << ifaceName();
     if (modportName() != "") str << " mp=" << modportName();
@@ -1774,6 +1795,8 @@ void AstIfaceRefDType::dump(std::ostream& str) const {
     }
 }
 void AstIfaceRefDType::dumpJson(std::ostream& str) const {
+    dumpJsonBoolFunc(str, isPortDecl);
+    dumpJsonBoolFunc(str, isVirtual);
     dumpJsonStrFunc(str, cellName);
     dumpJsonStrFunc(str, ifaceName);
     dumpJsonStrFunc(str, modportName);
@@ -2880,6 +2903,7 @@ void AstCMethodHard::setPurity() {
                                                           {"r_xor", true},
                                                           {"renew", false},
                                                           {"renew_copy", false},
+                                                          {"resize", false},
                                                           {"resume", false},
                                                           {"reverse", false},
                                                           {"rsort", false},

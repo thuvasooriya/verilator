@@ -373,6 +373,7 @@ Shi
 Shinkarovsky
 Shinya
 Shirakawa
+Shou
 Shuba
 Shunyao
 Slager
@@ -384,6 +385,7 @@ Solaris
 Solomatnikov
 Solt
 Southwell
+Spack
 Srini
 Srinivasan
 Stamness

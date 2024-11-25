@@ -109,6 +109,7 @@ class LinkCellsVisitor final : public VNVisitor {
 
     // Below state needs to be preserved between each module call.
     AstNodeModule* m_modp = nullptr;  // Current module
+    AstVar* m_varp = nullptr;  // Current variable
     VSymGraph m_mods;  // Symbol table of all module names
     LinkCellsGraph m_graph;  // Linked graph of all cell interconnects
     LibraryVertex* m_libVertexp = nullptr;  // Vertex at root of all libraries
@@ -236,7 +237,11 @@ class LinkCellsVisitor final : public VNVisitor {
                 if (!nodep->cellp()) nodep->ifacep(VN_AS(modp, Iface));
             } else if (VN_IS(modp, NotFoundModule)) {  // Will error out later
             } else {
-                nodep->v3error("Non-interface used as an interface: " << nodep->prettyNameQ());
+                nodep->v3error("Non-interface used as an interface: "
+                               << nodep->ifaceNameQ() << "\n"
+                               << nodep->warnMore()
+                                      + "... Perhaps intended an instantiation but "
+                                        "are missing parenthesis (IEEE 1800-2023 23.3.2)?");
             }
         }
         iterateChildren(nodep);
@@ -244,6 +249,9 @@ class LinkCellsVisitor final : public VNVisitor {
             pinp->param(true);
             if (pinp->name() == "") pinp->name("__paramNumber" + cvtToStr(pinp->pinNum()));
         }
+        // Parser didn't know what was interface, resolve now
+        // For historical reasons virtual interface reference variables remain VARs
+        if (m_varp && !nodep->isVirtual()) m_varp->setIfaceRef();
         // Note cannot do modport resolution here; modports are allowed underneath generates
     }
 
@@ -286,12 +294,10 @@ class LinkCellsVisitor final : public VNVisitor {
             AstNode* const cellsp = nodep->cellsp()->unlinkFrBackWithNext();
             // Module may have already linked, so need to pick up these new cells
             VL_RESTORER(m_modp);
-            {
-                m_modp = modp;
-                // Important that this adds to end, as next iterate assumes does all cells
-                modp->addStmtsp(cellsp);
-                iterateAndNextNull(cellsp);
-            }
+            m_modp = modp;
+            // Important that this adds to end, as next iterate assumes does all cells
+            modp->addStmtsp(cellsp);
+            iterateAndNextNull(cellsp);
         }
         VL_DO_DANGLING(pushDeletep(nodep->unlinkFrBack()), nodep);
     }
@@ -511,13 +517,6 @@ class LinkCellsVisitor final : public VNVisitor {
                 nodep->hasIfaceVar(true);
             }
         }
-        if (nodep->hasNoParens()) {
-            // Need in the grammar, otherwise it looks like "id/*data_type*/ id/*new_var*/;"
-            nodep->v3error("Instantiation " << nodep->prettyNameQ()
-                                            << " requires parenthesis (IEEE 1800-2023 23.3.2)\n"
-                                            << nodep->warnMore() << "... Suggest use '"
-                                            << nodep->prettyName() << "()'");
-        }
         if (nodep->modp()) {  //
             iterateChildren(nodep);
         }
@@ -530,6 +529,10 @@ class LinkCellsVisitor final : public VNVisitor {
             pinp->param(true);
             if (pinp->name() == "") pinp->name("__paramNumber" + cvtToStr(pinp->pinNum()));
         }
+        if (m_varp) {  // Parser didn't know what was interface, resolve now
+            const AstNodeModule* const varModp = findModuleSym(nodep->name());
+            if (VN_IS(varModp, Iface)) m_varp->setIfaceRef();
+        }
     }
     void visit(AstClassOrPackageRef* nodep) override {
         iterateChildren(nodep);
@@ -541,6 +544,17 @@ class LinkCellsVisitor final : public VNVisitor {
             pinp->param(true);
             if (pinp->name() == "") pinp->name("__paramNumber" + cvtToStr(pinp->pinNum()));
         }
+    }
+
+    void visit(AstVar* nodep) override {
+        {
+            VL_RESTORER(m_varp);
+            m_varp = nodep;
+            iterateAndNextNull(nodep->childDTypep());
+        }
+        iterateAndNextNull(nodep->delayp());
+        iterateAndNextNull(nodep->valuep());
+        iterateAndNextNull(nodep->attrsp());
     }
 
     void visit(AstNode* nodep) override { iterateChildren(nodep); }

@@ -2346,6 +2346,13 @@ class WidthVisitor final : public VNVisitor {
         UINFO(5, "  ENUMDTYPE " << nodep << endl);
         nodep->refDTypep(iterateEditMoveDTypep(nodep, nodep->subDTypep()));
         nodep->dtypep(nodep);
+        AstBasicDType* basicp = nodep->dtypep()->skipRefp()->basicp();
+        if (!basicp || !basicp->keyword().isIntNumeric()) {
+            nodep->v3error(
+                "Enum type must be an integer atom or vector type (IEEE 1800-2023 6.19)");
+            basicp = nodep->findSigned32DType()->basicp();
+            nodep->refDTypep(basicp);
+        }
         nodep->widthFromSub(nodep->subDTypep());
         // Assign widths
         userIterateAndNext(nodep->itemsp(), WidthVP{nodep->dtypep(), BOTH}.p());
@@ -2376,17 +2383,11 @@ class WidthVisitor final : public VNVisitor {
                     itemp->v3error("Enum value that is unassigned cannot follow value with X/Zs "
                                    "(IEEE 1800-2023 6.19)");
                 }
-                if (!nodep->dtypep()->basicp()
-                    && !nodep->dtypep()->basicp()->keyword().isIntNumeric()) {
-                    itemp->v3error("Enum names without values only allowed on numeric types");
-                    // as can't +1 to resolve them.
-                }
                 itemp->valuep(new AstConst{itemp->fileline(), num});
             }
 
             const AstConst* const constp = VN_AS(itemp->valuep(), Const);
-            if (constp->num().isFourState() && nodep->dtypep()->basicp()
-                && !nodep->dtypep()->basicp()->isFourstate()) {
+            if (constp->num().isFourState() && basicp->basicp() && !basicp->isFourstate()) {
                 itemp->v3error("Enum value with X/Zs cannot be assigned to non-fourstate type "
                                "(IEEE 1800-2023 6.19)");
             }
@@ -3128,7 +3129,9 @@ class WidthVisitor final : public VNVisitor {
         // Any AstWith is checked later when know types, in methodWithArgument
         for (AstNode* pinp = nodep->pinsp(); pinp; pinp = pinp->nextp()) {
             if (AstArg* const argp = VN_CAST(pinp, Arg)) {
-                if (argp->exprp()) userIterate(argp->exprp(), WidthVP{SELF, BOTH}.p());
+                if (argp->exprp())
+                    userIterate(argp->exprp(),
+                                WidthVP{nodep->fromp()->dtypep()->subDTypep(), BOTH}.p());
             }
         }
         // Find the fromp dtype - should be a class
@@ -3520,9 +3523,19 @@ class WidthVisitor final : public VNVisitor {
         return VN_AS(nodep->pinsp(), Arg)->exprp();
     }
     void methodCallLValueRecurse(AstMethodCall* nodep, AstNode* childp, const VAccess& access) {
-        if (const AstCMethodHard* const ichildp = VN_CAST(childp, CMethodHard)) {
-            if (ichildp->name() == "at" || ichildp->name() == "atWrite"
-                || ichildp->name() == "atWriteAppend" || ichildp->name() == "atWriteAppendBack") {
+        if (AstCMethodHard* const ichildp = VN_CAST(childp, CMethodHard)) {
+            const std::string name = ichildp->name();
+            if (name == "at" || name == "atWrite" || name == "atBack" || name == "atWriteAppend"
+                || name == "atWriteAppendBack") {
+                const AstNodeDType* const fromDtypep = ichildp->fromp()->dtypep()->skipRefp();
+                if (VN_IS(fromDtypep, QueueDType) || VN_IS(fromDtypep, DynArrayDType)) {
+                    // Change access methods to writable ones
+                    if (name == "at") {
+                        ichildp->name("atWrite");
+                    } else if (name == "atBack") {
+                        ichildp->name("atWriteAppendBack");
+                    }
+                }
                 methodCallLValueRecurse(nodep, ichildp->fromp(), access);
                 return;
             }
@@ -5534,7 +5547,7 @@ class WidthVisitor final : public VNVisitor {
                     userIterate(modVarp->childDTypep(),
                                 WidthVP{SELF, BOTH}.p());  // May relink pointed to node
                     AstNodeDType* const setDtp = modVarp->childDTypep()->cloneTree(false);
-                    patternp->childDTypep(setDtp);
+                    if (!patternp->childDTypep()) patternp->childDTypep(setDtp);
                     userIterateChildren(nodep, WidthVP{setDtp, BOTH}.p());
                     didWidth = true;
                 }
@@ -6120,6 +6133,15 @@ class WidthVisitor final : public VNVisitor {
             if (v3Global.opt.timing().isSetTrue()) {
                 iterateCheckBool(nodep, "Wait", nodep->condp(),
                                  BOTH);  // it's like an if() condition.
+                // TODO check also inside complex event expressions
+                if (AstNodeVarRef* const varrefp = VN_CAST(nodep->condp(), NodeVarRef)) {
+                    if (varrefp->isEvent()) {
+                        varrefp->v3error("Wait statement conditions do not take raw events"
+                                         " (IEEE 1800-2023 15.5.3)\n"
+                                         << varrefp->warnMore() << "... Suggest use '"
+                                         << varrefp->prettyName() << ".triggered'");
+                    }
+                }
                 iterateNull(nodep->stmtsp());
                 return;
             } else if (v3Global.opt.timing().isSetFalse()) {
@@ -7802,7 +7824,10 @@ class WidthVisitor final : public VNVisitor {
         for (AstPatMember* patp = VN_AS(nodep->itemsp(), PatMember); patp;
              patp = VN_AS(patp->nextp(), PatMember)) {
             if (patp->keyp()) {
+                if (patp->varrefp()) V3Const::constifyParamsEdit(patp->varrefp());
                 if (const AstConst* const constp = VN_CAST(patp->keyp(), Const)) {
+                    element = constp->toSInt();
+                } else if (const AstConst* const constp = VN_CAST(patp->varrefp(), Const)) {
                     element = constp->toSInt();
                 } else {
                     patp->keyp()->v3error("Assignment pattern key not supported/understood: "
@@ -7941,36 +7966,28 @@ class WidthVisitor final : public VNVisitor {
     }
     void userIterate(AstNode* nodep, WidthVP* vup) {
         if (!nodep) return;
-        {
-            VL_RESTORER(m_vup);
-            m_vup = vup;
-            iterate(nodep);
-        }
+        VL_RESTORER(m_vup);
+        m_vup = vup;
+        iterate(nodep);
     }
     void userIterateAndNext(AstNode* nodep, WidthVP* vup) {
         if (!nodep) return;
         if (nodep->didWidth()) return;  // Avoid iterating list we have already iterated
-        {
-            VL_RESTORER(m_vup);
-            m_vup = vup;
-            iterateAndNextNull(nodep);
-        }
+        VL_RESTORER(m_vup);
+        m_vup = vup;
+        iterateAndNextNull(nodep);
     }
     void userIterateChildren(AstNode* nodep, WidthVP* vup) {
         if (!nodep) return;
-        {
-            VL_RESTORER(m_vup);
-            m_vup = vup;
-            iterateChildren(nodep);
-        }
+        VL_RESTORER(m_vup);
+        m_vup = vup;
+        iterateChildren(nodep);
     }
     void userIterateChildrenBackwardsConst(AstNode* nodep, WidthVP* vup) {
         if (!nodep) return;
-        {
-            VL_RESTORER(m_vup);
-            m_vup = vup;
-            iterateChildrenBackwardsConst(nodep);
-        }
+        VL_RESTORER(m_vup);
+        m_vup = vup;
+        iterateChildrenBackwardsConst(nodep);
     }
 
 public:
