@@ -390,6 +390,7 @@ private:
     bool m_fFuncSplitCat = true;  // main switch: -fno-func-split-cat: expansion of C macros
     bool m_fGate;        // main switch: -fno-gate: gate wire elimination
     bool m_fInline;      // main switch: -fno-inline: module inlining
+    bool m_fInlineFuncs = true;  // main switch: -fno-inline-funcs: function inlining
     bool m_fLife;        // main switch: -fno-life: variable lifetime
     bool m_fLifePost;    // main switch: -fno-life-post: delayed assignment elimination
     bool m_fLocalize;    // main switch: -fno-localize: convert temps to local variables
@@ -398,6 +399,7 @@ private:
     bool m_fMergeConstPool = true;  // main switch: -fno-merge-const-pool
     bool m_fReloop;      // main switch: -fno-reloop: reform loops
     bool m_fReorder;     // main switch: -fno-reorder: reorder assignments in blocks
+    bool m_fSlice = true;  // main switch: -fno-slice: array assignment slicing
     bool m_fSplit;       // main switch: -fno-split: always assignment splitting
     bool m_fSubst;       // main switch: -fno-subst: substitute expression temp values
     bool m_fSubstConst;  // main switch: -fno-subst-const: final constant substitution
@@ -427,6 +429,7 @@ private:
     static string parseFileArg(const string& optdir, const string& relfilename);
     string filePathCheckOneDir(const string& modname, const string& dirname);
     static int stripOptionsForChildRun(const string& opt, bool forTop);
+    void validateIdentifier(FileLine* fl, const string& arg, const string& opt);
 
     // CONSTRUCTORS
     VL_UNCOPYABLE(V3Options);
@@ -685,6 +688,7 @@ public:
     bool fFunc() const { return fFuncSplitCat() || fFuncBalanceCat(); }
     bool fGate() const { return m_fGate; }
     bool fInline() const { return m_fInline; }
+    bool fInlineFuncs() const { return m_fInlineFuncs; }
     bool fLife() const { return m_fLife; }
     bool fLifePost() const { return m_fLifePost; }
     bool fLocalize() const { return m_fLocalize; }
@@ -693,6 +697,7 @@ public:
     bool fMergeConstPool() const { return m_fMergeConstPool; }
     bool fReloop() const { return m_fReloop; }
     bool fReorder() const { return m_fReorder; }
+    bool fSlice() const { return m_fSlice; }
     bool fSplit() const { return m_fSplit; }
     bool fSubst() const { return m_fSubst; }
     bool fSubstConst() const { return m_fSubstConst; }

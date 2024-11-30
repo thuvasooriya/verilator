@@ -30,6 +30,7 @@
 #include "V3Const.h"
 #include "V3EmitCBase.h"
 #include "V3Graph.h"
+#include "V3Stats.h"
 
 #include <tuple>
 
@@ -132,7 +133,9 @@ public:
     void remapFuncClassp(AstNodeFTask* nodep, AstNodeFTask* newp) {
         m_funcToClassMap[newp] = getClassp(nodep);
     }
-    bool ftaskNoInline(AstNodeFTask* nodep) { return getFTaskVertex(nodep)->noInline(); }
+    bool ftaskNoInline(AstNodeFTask* nodep) {
+        return !v3Global.opt.fInlineFuncs() || getFTaskVertex(nodep)->noInline();
+    }
     AstCFunc* ftaskCFuncp(AstNodeFTask* nodep) { return getFTaskVertex(nodep)->cFuncp(); }
     void ftaskCFuncp(AstNodeFTask* nodep, AstCFunc* cfuncp) {
         getFTaskVertex(nodep)->cFuncp(cfuncp);
@@ -365,7 +368,10 @@ class TaskVisitor final : public VNVisitor {
     AstNode* m_insStmtp = nullptr;  // Where to insert statement
     bool m_inSensesp = false;  // Are we under a senitem?
     int m_modNCalls = 0;  // Incrementing func # for making symbols
+
+    // STATE - across all visitors
     DpiCFuncs m_dpiNames;  // Map of all created DPI functions
+    VDouble0 m_statInlines;  // Statistic tracking
 
     // METHODS
 
@@ -515,7 +521,7 @@ class TaskVisitor final : public VNVisitor {
                         pinp->v3fatalSrc("ref argument should have caused non-inline of function");
                     }
                 }
-            } else if (portp->isInoutish()) {
+            } else if (portp->isInout()) {
                 // if (debug() >= 9) pinp->dumpTree("-pinrsize- ");
 
                 AstVarScope* const newvscp
@@ -900,7 +906,7 @@ class TaskVisitor final : public VNVisitor {
 
                     if (portp->isNonOutput()) {
                         std::string frName
-                            = portp->isInoutish() && portp->basicp()->isDpiPrimitive()
+                            = portp->isInout() && portp->basicp()->isDpiPrimitive()
                                       && portp->dtypep()->skipRefp()->arrayUnpackedElements() == 1
                                   ? "*"
                                   : "";
@@ -1454,6 +1460,7 @@ class TaskVisitor final : public VNVisitor {
             beginp = createNonInlinedFTask(nodep, namePrefix, outvscp, cnewp /*ref*/);
         } else {
             beginp = createInlinedFTask(nodep, namePrefix, outvscp);
+            ++m_statInlines;
         }
 
         if (VN_IS(nodep, New)) {
@@ -1606,7 +1613,7 @@ public:
         : m_statep{statep} {
         iterate(nodep);
     }
-    ~TaskVisitor() override = default;
+    ~TaskVisitor() { V3Stats::addStat("Optimizations, Functions inlined", m_statInlines); }
 };
 
 //######################################################################

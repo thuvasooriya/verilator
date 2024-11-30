@@ -599,6 +599,8 @@ Summary:
 
 .. option:: -fno-inline
 
+.. option:: -fno-inline-funcs
+
 .. option:: -fno-life
 
 .. option:: -fno-life-post
@@ -614,6 +616,8 @@ Summary:
 .. option:: -fno-reloop
 
 .. option:: -fno-reorder
+
+.. option:: -fno-slice
 
 .. option:: -fno-split
 
