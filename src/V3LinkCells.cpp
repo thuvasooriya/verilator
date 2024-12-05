@@ -56,7 +56,7 @@ public:
         , m_modp{modp} {}
     ~LinkCellsVertex() override = default;
     AstNodeModule* modp() const VL_MT_STABLE { return m_modp; }
-    string name() const override VL_MT_STABLE { return modp()->name(); }
+    string name() const override VL_MT_STABLE { return cvtToHex(modp()) + ' ' + modp()->name(); }
     FileLine* fileline() const override { return modp()->fileline(); }
     // Recursive modules get space for maximum recursion
     uint32_t rankAdder() const override {
@@ -124,6 +124,10 @@ class LinkCellsVisitor final : public VNVisitor {
         if (!nodep->user1p()) nodep->user1p(new LinkCellsVertex{&m_graph, nodep});
         return nodep->user1u().toGraphVertex();
     }
+    void newEdge(V3GraphVertex* fromp, V3GraphVertex* top, int weight, bool cuttable) {
+        UINFO(9, "newEdge " << fromp->name() << " -> " << top->name() << endl);
+        new V3GraphEdge{&m_graph, fromp, top, weight, cuttable};
+    }
 
     AstNodeModule* findModuleSym(const string& modName) {
         const VSymEnt* const foundp = m_mods.rootp()->findIdFallback(modName);
@@ -184,7 +188,7 @@ class LinkCellsVisitor final : public VNVisitor {
         VL_RESTORER(m_modp);
         {
             // For nested modules/classes, child below parent
-            if (m_modp) new V3GraphEdge{&m_graph, vertex(m_modp), vertex(nodep), 1};
+            if (m_modp) newEdge(vertex(m_modp), vertex(nodep), 1, false);
             //
             m_modp = nodep;
             UINFO(4, "Link Module: " << nodep << endl);
@@ -216,7 +220,7 @@ class LinkCellsVisitor final : public VNVisitor {
                 // Put under a fake vertex so that the graph ranking won't indicate
                 // this is a top level module
                 if (!m_libVertexp) m_libVertexp = new LibraryVertex{&m_graph};
-                new V3GraphEdge{&m_graph, m_libVertexp, vertex(nodep), 1, false};
+                newEdge(m_libVertexp, vertex(nodep), 1, false);
             }
             // Note AstBind also has iteration on cells
             iterateChildren(nodep);
@@ -233,7 +237,7 @@ class LinkCellsVisitor final : public VNVisitor {
         if (modp) {
             if (VN_IS(modp, Iface)) {
                 // Track module depths, so can sort list from parent down to children
-                new V3GraphEdge{&m_graph, vertex(m_modp), vertex(modp), 1, false};
+                newEdge(vertex(m_modp), vertex(modp), 1, false);
                 if (!nodep->cellp()) nodep->ifacep(VN_AS(modp, Iface));
             } else if (VN_IS(modp, NotFoundModule)) {  // Will error out later
             } else {
@@ -253,6 +257,7 @@ class LinkCellsVisitor final : public VNVisitor {
         // For historical reasons virtual interface reference variables remain VARs
         if (m_varp && !nodep->isVirtual()) m_varp->setIfaceRef();
         // Note cannot do modport resolution here; modports are allowed underneath generates
+        UINFO(4, "Link IfaceRef done: " << nodep << endl);
     }
 
     void visit(AstPackageExport* nodep) override {
@@ -279,7 +284,7 @@ class LinkCellsVisitor final : public VNVisitor {
                 return;
             }
         }
-        new V3GraphEdge{&m_graph, vertex(m_modp), vertex(nodep->packagep()), 1, false};
+        newEdge(vertex(m_modp), vertex(nodep->packagep()), 1, false);
     }
 
     void visit(AstBind* nodep) override {
@@ -349,8 +354,7 @@ class LinkCellsVisitor final : public VNVisitor {
                             // user1 etc will retain its pre-clone value
                             cellmodp->user2p(otherModp);
                             v3Global.rootp()->addModulesp(otherModp);
-                            new V3GraphEdge{&m_graph, vertex(cellmodp), vertex(otherModp), 1,
-                                            false};
+                            newEdge(vertex(cellmodp), vertex(otherModp), 1, false);
                         }
                         cellmodp = otherModp;
                         nodep->modp(cellmodp);
@@ -363,7 +367,7 @@ class LinkCellsVisitor final : public VNVisitor {
                 } else {  // Non-recursive
                     // Track module depths, so can sort list from parent down to children
                     nodep->modp(cellmodp);
-                    new V3GraphEdge{&m_graph, vertex(m_modp), vertex(cellmodp), 1, false};
+                    newEdge(vertex(m_modp), vertex(cellmodp), 1, false);
                 }
             }
         }
@@ -499,10 +503,10 @@ class LinkCellsVisitor final : public VNVisitor {
                 AstIfaceRefDType* const idtypep = new AstIfaceRefDType{
                     nodep->fileline(), nodep->name(), nodep->modp()->name()};
                 idtypep->ifacep(nullptr);  // cellp overrides
-                // In the case of arrayed interfaces, we replace cellp when de-arraying in V3Inst
                 idtypep->cellp(nodep);  // Only set when real parent cell known.
                 AstVar* varp;
                 if (nodep->rangep()) {
+                    // For arrayed interfaces, we replace cellp when de-arraying in V3Inst
                     AstNodeArrayDType* const arrp
                         = new AstUnpackArrayDType{nodep->fileline(), VFlagChildDType{}, idtypep,
                                                   nodep->rangep()->cloneTree(true)};
