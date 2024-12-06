@@ -9,12 +9,10 @@
 
 import vltest_bootstrap
 
-test.scenarios('vlt')
-test.top_filename = "t/t_dump.v"
+test.scenarios('simulator')
+test.top_filename = "t_disable_fork2.v"
 
-test.lint(v_flags=["--dump-tree-json --no-json-edit-nums"])
-
-test.files_identical(test.obj_dir + "/Vt_dump_json_002_cellsort.tree.json", test.golden_filename,
-                     'logfile')
+# Validate if splitted functions get vlProcess handle
+test.compile(verilator_flags2=["--timing --output-split-cfuncs 1"])
 
 test.passes()

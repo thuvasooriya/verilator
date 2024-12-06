@@ -9,12 +9,8 @@
 
 import vltest_bootstrap
 
-test.scenarios('vlt')
-test.top_filename = "t/t_dump.v"
+test.scenarios('simulator')
 
-test.lint(v_flags=["--dump-tree-json --no-json-edit-nums"])
-
-test.files_identical(test.obj_dir + "/Vt_dump_json_002_cellsort.tree.json", test.golden_filename,
-                     'logfile')
+test.lint(fails=True, expect_filename=test.golden_filename)
 
 test.passes()

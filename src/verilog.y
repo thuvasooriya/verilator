@@ -89,8 +89,8 @@ public:
     FileLine* m_instModuleFl = nullptr;  // Fileline of module referenced for instantiations
     AstPin* m_instParamp = nullptr;  // Parameters for instantiations
     string m_instModule;  // Name of module referenced for instantiations
-    VVarType m_varDecl;  // Type for next signal declaration (reg/wire/etc)
-    VDirection m_varIO;  // Direction for next signal declaration (reg/wire/etc)
+    VVarType m_varDecl = VVarType::UNKNOWN;  // Type for next signal declaration (reg/wire/etc)
+    VDirection m_varIO = VDirection::NONE;  // Direction for next signal declaration (reg/wire/etc)
     VLifetime m_varLifetime;  // Static/Automatic for next signal
     bool m_impliedDecl = false;  // Allow implied wire declarations
     bool m_varDeclTyped = false;  // Var got reg/wire for dedup check
@@ -110,10 +110,7 @@ public:
     static int s_modTypeImpNum;  // Implicit type number, incremented each module
 
     // CONSTRUCTORS
-    V3ParseGrammar() {
-        m_varDecl = VVarType::UNKNOWN;
-        m_varIO = VDirection::NONE;
-    }
+    V3ParseGrammar() {}
     static V3ParseGrammar* singletonp() {
         static V3ParseGrammar singleton;
         return &singleton;
@@ -203,7 +200,6 @@ public:
                                                << name << "'");
         }
     }
-    void setVarDecl(VVarType type) { m_varDecl = type; }
     void setDType(AstNodeDType* dtypep) {
         if (m_varDTypep) VL_DO_CLEAR(m_varDTypep->deleteTree(), m_varDTypep = nullptr);
         m_varDTypep = dtypep;
@@ -312,30 +308,26 @@ int V3ParseGrammar::s_modTypeImpNum = 0;
 #define CRELINE() (PARSEP->bisonLastFileline()->copyOrSameFileLineApplied())
 #define FILELINE_OR_CRE(nodep) ((nodep) ? (nodep)->fileline() : CRELINE())
 
-#define VARRESET_LIST(decl) \
+#define VARRESET_LIST(decl) VARRESET__PVT(decl, 1)  // Start of pinlist
+#define VARRESET_NONLIST(decl) VARRESET__PVT(decl, 0);  // Not in a pinlist
+#define VARRESET__PVT(decl, pinNumStart) \
     { \
-        GRAMMARP->m_pinNum = 1; \
-        VARRESET(); \
         VARDECL(decl); \
-    }  // Start of pinlist
-#define VARRESET_NONLIST(decl) \
-    { \
-        GRAMMARP->m_pinNum = 0; \
-        VARRESET(); \
-        VARDECL(decl); \
-    }  // Not in a pinlist
-#define VARRESET() \
-    { \
-        VARDECL(UNKNOWN); \
         VARIO(NONE); \
         VARDTYPE_NDECL(nullptr); \
+        GRAMMARP->m_pinNum = (pinNumStart); \
         GRAMMARP->m_varLifetime = VLifetime::NONE; \
         GRAMMARP->m_varDeclTyped = false; \
     }
 #define VARDECL(type) \
-    { GRAMMARP->setVarDecl(VVarType::type); }
+    { GRAMMARP->m_varDecl = VVarType::type; }
 #define VARIO(type) \
     { GRAMMARP->m_varIO = VDirection::type; }
+// Set direction to default-input when detect inside an ANSI port list
+#define VARIOANSI(type) \
+    { \
+        if (GRAMMARP->m_varIO == VDirection::NONE) VARIO(INPUT); \
+    }
 #define VARLIFE(flag) \
     { GRAMMARP->m_varLifetime = flag; }
 #define VARDTYPE(dtypep) \
@@ -1478,13 +1470,13 @@ portsStarE<nodep>:              // IEEE: .* + list_of_ports + list_of_port_decla
         |       '(' ')'                                 { $$ = nullptr; }
         //                      // .* expanded from module_declaration
         //UNSUP '(' yP_DOTSTAR ')'                              { UNSUP }
-        |       '('                                     { VARRESET_LIST(PORT);
-                                                          GRAMMARP->m_pinAnsi = true; }
-        /*cont*/    list_of_ports ')'                   { $$ = $3; VARRESET_NONLIST(UNKNOWN);
-                                                          GRAMMARP->m_pinAnsi = false; }
+        |       '('
+        /*mid*/         { VARRESET_LIST(PORT); GRAMMARP->m_pinAnsi = true; }
+        /*cont*/    list_of_ports ')'
+                       { $$ = $3; VARRESET_NONLIST(UNKNOWN); GRAMMARP->m_pinAnsi = false; }
         ;
 
-list_of_portsE<nodep>:          // IEEE: list_of_ports + list_of_port_declarations
+list_of_portsE<nodep>:          // IEEE: [ list_of_ports + list_of_port_declarations ]
                 portAndTagE                     { $$ = $1; }
         |       list_of_portsE ',' portAndTagE          { $$ = addNextNull($1, $3); }
         ;
@@ -1499,7 +1491,7 @@ portAndTagE<nodep>:
                         { int p = PINNUMINC();
                           const string name = "__pinNumber" + cvtToStr(p);
                           $$ = new AstPort{CRELINE(), p, name};
-                          AstVar* varp = new AstVar{CRELINE(), VVarType::PORT, name, VFlagChildDType{},
+                          AstVar* varp = new AstVar{CRELINE(), VVarType::WIRE, name, VFlagChildDType{},
                                                     new AstBasicDType{CRELINE(), LOGIC_IMPLICIT}};
                           varp->declDirection(VDirection::INPUT);
                           varp->direction(VDirection::INPUT);
@@ -1528,17 +1520,17 @@ port<nodep>:                    // ==IEEE: port
         //                      // IEEE: interface_port_header port_identifier { unpacked_dimension }
         //                      // Expanded interface_port_header
         //                      // We use instantCb here because the non-port form looks just like a module instantiation
-                portDirNetE id/*interface*/                      portSig variable_dimensionListE sigAttrListE
+                portDirNetE id/*interface*/ portSig variable_dimensionListE sigAttrListE
                         { // VAR for now, but V3LinkCells may call setIfcaeRef on it later
                           $$ = $3; VARDECL(VAR); VARIO(NONE);
                           AstNodeDType* const dtp = new AstIfaceRefDType{$<fl>2, "", *$2};
-                          VARDTYPE(dtp);
+                          VARDTYPE(dtp); VARIOANSI();
                           addNextNull($$, VARDONEP($$, $4, $5)); }
         |       portDirNetE id/*interface*/ '.' idAny/*modport*/ portSig variable_dimensionListE sigAttrListE
                         { // VAR for now, but V3LinkCells may call setIfcaeRef on it later
                           $$ = $5; VARDECL(VAR); VARIO(NONE);
                           AstNodeDType* const dtp = new AstIfaceRefDType{$<fl>2, $<fl>4, "", *$2, *$4};
-                          VARDTYPE(dtp);
+                          VARDTYPE(dtp); VARIOANSI();
                           addNextNull($$, VARDONEP($$, $6, $7)); }
         |       portDirNetE yINTERFACE                           portSig rangeListE sigAttrListE
                         { $$ = nullptr; BBUNSUP($<fl>2, "Unsupported: generic interfaces"); }
@@ -1550,7 +1542,7 @@ port<nodep>:                    // ==IEEE: port
                           BBUNSUP($<fl>2, "Unsupported: interconnect");
                           AstNodeDType* const dtp = GRAMMARP->addRange(
                                     new AstBasicDType{$2, LOGIC_IMPLICIT, $3}, $4, true);
-                          VARDTYPE(dtp);
+                          VARDTYPE(dtp); VARIOANSI();
                           addNextNull($$, VARDONEP($$, $6, $7)); }
         //
         //                      // IEEE: ansi_port_declaration, with [port_direction] removed
@@ -1589,15 +1581,15 @@ port<nodep>:                    // ==IEEE: port
         //                      // IEEE: portDirNetE data_type '.' portSig -> handled with AstDot in expr.
         //
         |       portDirNetE data_type           portSig variable_dimensionListE sigAttrListE
-                        { $$ = $3; VARDTYPE($2); addNextNull($$, VARDONEP($$, $4, $5)); }
+                        { $$ = $3; VARDTYPE($2); VARIOANSI(); addNextNull($$, VARDONEP($$, $4, $5)); }
         |       portDirNetE yVAR data_type      portSig variable_dimensionListE sigAttrListE
-                        { $$ = $4; VARDTYPE($3); addNextNull($$, VARDONEP($$, $5, $6)); }
+                        { $$ = $4; VARDTYPE($3); VARIOANSI(); addNextNull($$, VARDONEP($$, $5, $6)); }
         |       portDirNetE yVAR implicit_typeE portSig variable_dimensionListE sigAttrListE
-                        { $$ = $4; VARDTYPE($3); addNextNull($$, VARDONEP($$, $5, $6)); }
+                        { $$ = $4; VARDTYPE($3); VARIOANSI(); addNextNull($$, VARDONEP($$, $5, $6)); }
         |       portDirNetE signing             portSig variable_dimensionListE sigAttrListE
                         { $$ = $3;
                           AstNodeDType* const dtp = new AstBasicDType{$3->fileline(), LOGIC_IMPLICIT, $2};
-                          VARDTYPE_NDECL(dtp);
+                          VARDTYPE_NDECL(dtp); VARIOANSI();
                           addNextNull($$, VARDONEP($$, $4, $5)); }
         |       portDirNetE signingE rangeList  portSig variable_dimensionListE sigAttrListE
                         { $$ = $4;
@@ -1609,13 +1601,13 @@ port<nodep>:                    // ==IEEE: port
                         { $$ = $2; /*VARDTYPE-same*/ addNextNull($$, VARDONEP($$, $3, $4)); }
         //
         |       portDirNetE data_type           portSig variable_dimensionListE sigAttrListE '=' constExpr
-                        { $$ = $3; VARDTYPE($2);
+                        { $$ = $3; VARDTYPE($2); VARIOANSI();
                           if (AstVar* vp = VARDONEP($$, $4, $5)) { addNextNull($$, vp); vp->valuep($7); } }
         |       portDirNetE yVAR data_type      portSig variable_dimensionListE sigAttrListE '=' constExpr
-                        { $$ = $4; VARDTYPE($3);
+                        { $$ = $4; VARDTYPE($3); VARIOANSI();
                           if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
         |       portDirNetE yVAR implicit_typeE portSig variable_dimensionListE sigAttrListE '=' constExpr
-                        { $$ = $4; VARDTYPE($3);
+                        { $$ = $4; VARDTYPE($3); VARIOANSI();
                           if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
         |       portDirNetE /*implicit*/        portSig variable_dimensionListE sigAttrListE '=' constExpr
                         { $$ = $2; /*VARDTYPE-same*/
@@ -3796,7 +3788,7 @@ statementFor<beginp>:           // IEEE: part of statement
                           $$->addStmtsp(new AstWhile{$1, new AstConst{$1, AstConst::BitTrue{}}, $7, $5}); }
         ;
 beginForParen:  // IEEE: Part of statement (for loop beginning paren)
-                '('                                     { VARRESET(); }
+                '('                                     { VARRESET_NONLIST(UNKNOWN); }
         ;
 
 statementVerilatorPragmas<nodep>:
@@ -5449,7 +5441,7 @@ let_declaration<letp>:  // IEEE: let_declaration
 let_port_listE<nodep>:   // IEEE: [ let_port_list ]
                 /*empty*/                               { $$ = nullptr; }
         |       /*emptyStart*/
-        /*mid*/         { VARRESET_LIST(UNKNOWN); VARIO(INOUT); }
+        /*mid*/         { VARRESET_LIST(VAR); VARIO(INOUT); }
         /*cont*/  let_port_list                         { $$ = $2; VARRESET_NONLIST(UNKNOWN); }
         ;
 
@@ -5461,7 +5453,7 @@ let_port_list<nodep>:   // IEEE: let_port_list
 let_port_item<varp>:  // IEEE: let_port_Item
         //                      // IEEE: Expanded let_formal_type
                 yUNTYPED idAny/*formal_port_identifier*/ variable_dimensionListE exprEqE
-                        { $$ = new AstVar{$<fl>2, VVarType::PORT, *$2, VFlagChildDType{},
+                        { $$ = new AstVar{$<fl>2, VVarType::VAR, *$2, VFlagChildDType{},
                                           new AstBasicDType{$<fl>2, LOGIC_IMPLICIT}};
                           $$->direction(VDirection::INOUT);
                           $$->lifetime(VLifetime::AUTOMATIC);
@@ -5469,7 +5461,7 @@ let_port_item<varp>:  // IEEE: let_port_Item
                           PINNUMINC(); }
         |       data_type idAny/*formal_port_identifier*/ variable_dimensionListE exprEqE
                         { BBUNSUP($<fl>1, "Unsupported: let typed ports");
-                          $$ = new AstVar{$<fl>2, VVarType::PORT, *$2, VFlagChildDType{},
+                          $$ = new AstVar{$<fl>2, VVarType::VAR, *$2, VFlagChildDType{},
                                           new AstBasicDType{$<fl>2, LOGIC_IMPLICIT}};
                           $$->direction(VDirection::INOUT);
                           $$->lifetime(VLifetime::AUTOMATIC);
@@ -5477,7 +5469,7 @@ let_port_item<varp>:  // IEEE: let_port_Item
                           PINNUMINC(); }
         |       implicit_typeE id/*formal_port_identifier*/ variable_dimensionListE exprEqE
                         { if ($1) BBUNSUP($<fl>1, "Unsupported: let typed ports");
-                          $$ = new AstVar{$<fl>2, VVarType::PORT, *$2, VFlagChildDType{},
+                          $$ = new AstVar{$<fl>2, VVarType::VAR, *$2, VFlagChildDType{},
                                           new AstBasicDType{$<fl>2, LOGIC_IMPLICIT}};
                           $$->direction(VDirection::INOUT);
                           $$->lifetime(VLifetime::AUTOMATIC);

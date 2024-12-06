@@ -437,7 +437,8 @@ void AstNetlist::timeprecisionMerge(FileLine*, const VTimescale& value) {
 }
 
 bool AstVar::isSigPublic() const {
-    return (m_sigPublic || (v3Global.opt.allPublic() && !isTemp() && !isGenVar()));
+    return (m_sigPublic || (v3Global.opt.allPublic() && !isTemp() && !isGenVar()))
+           && !isIfaceRef();
 }
 bool AstVar::isScQuad() const { return (isSc() && isQuad() && !isScBv() && !isScBigUint()); }
 bool AstVar::isScBv() const {
@@ -794,7 +795,7 @@ const AstNodeDType* AstNodeDType::skipRefIterp(bool skipConst, bool skipEnum) co
                 nodep = subp;
                 continue;
             } else {
-                v3fatalSrc("Typedef not linked");
+                nodep->v3fatalSrc(nodep->prettyTypeName() << " not linked to type");
                 return nullptr;
             }
         }
@@ -2263,9 +2264,11 @@ void AstPackageImport::pkgNameFrom() {
 }
 void AstPatMember::dump(std::ostream& str) const {
     this->AstNodeExpr::dump(str);
+    if (isConcat()) str << " [CONCAT]";
     if (isDefault()) str << " [DEFAULT]";
 }
 void AstPatMember::dumpJson(std::ostream& str) const {
+    if (isConcat()) dumpJsonBoolFunc(str, isConcat);
     if (isDefault()) dumpJsonBoolFunc(str, isDefault);
     dumpJsonGen(str);
 }
