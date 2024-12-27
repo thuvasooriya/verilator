@@ -4191,6 +4191,7 @@ public:
     }
     string emitVerilog() override { return "%k(%l%f[%r])"; }
     string emitC() override { return "%li%k[%ri]"; }
+    string emitSMT() const override { return "(select %l %r)"; }
     bool cleanOut() const override { return true; }
     bool cleanLhs() const override { return false; }
     bool cleanRhs() const override { return true; }
@@ -4374,6 +4375,7 @@ class AstFuncRef final : public AstNodeFTaskRef {
     // A reference to a function
     bool m_superReference = false;  // Called with super reference
 public:
+    inline AstFuncRef(FileLine* fl, AstFunc* taskp, AstNodeExpr* pinsp);
     AstFuncRef(FileLine* fl, AstParseRef* namep, AstNodeExpr* pinsp)
         : ASTGEN_SUPER_FuncRef(fl, (AstNode*)namep, pinsp) {}
     AstFuncRef(FileLine* fl, const string& name, AstNodeExpr* pinsp)
@@ -4414,6 +4416,7 @@ class AstTaskRef final : public AstNodeFTaskRef {
     // A reference to a task
     bool m_superReference = false;  // Called with super reference
 public:
+    inline AstTaskRef(FileLine* fl, AstTask* taskp, AstNodeExpr* pinsp);
     AstTaskRef(FileLine* fl, AstParseRef* namep, AstNodeExpr* pinsp)
         : ASTGEN_SUPER_TaskRef(fl, (AstNode*)namep, pinsp) {
         dtypeSetVoid();

@@ -672,7 +672,7 @@ class WidthVisitor final : public VNVisitor {
     void visit(AstDefaultDisable* nodep) override {
         assertAtStatement(nodep);
         // it's like an if() condition.
-        iterateCheckBool(nodep, "default disable iff condiftion", nodep->condp(), BOTH);
+        iterateCheckBool(nodep, "default disable iff condition", nodep->condp(), BOTH);
     }
     void visit(AstDelay* nodep) override {
         if (VN_IS(m_procedurep, Final)) {
@@ -2670,33 +2670,37 @@ class WidthVisitor final : public VNVisitor {
         }
 
         AstBasicDType* dtype = VN_CAST(nodep->exprp()->dtypep(), BasicDType);
-        AstNodeDType* subDTypep = nullptr;
+        AstNodeDType* expDTypep = nullptr;
 
         if (dtype && dtype->isString()) {
             nodep->dtypeSetString();
-            subDTypep = nodep->findStringDType();
+            expDTypep = nodep->findStringDType();
         } else if (dtype && dtype->isDouble()) {
             nodep->dtypeSetDouble();
-            subDTypep = nodep->findDoubleDType();
+            expDTypep = nodep->findDoubleDType();
         } else {
             // Take width as maximum across all items
             int width = nodep->exprp()->width();
             int mwidth = nodep->exprp()->widthMin();
+            bool isFourstate = nodep->exprp()->dtypep()->isFourstate();
             for (const AstNode* itemp = nodep->itemsp(); itemp; itemp = itemp->nextp()) {
                 width = std::max(width, itemp->width());
                 mwidth = std::max(mwidth, itemp->widthMin());
+                isFourstate |= itemp->dtypep()->isFourstate();
             }
             nodep->dtypeSetBit();
-            subDTypep = nodep->findLogicDType(width, mwidth, nodep->exprp()->dtypep()->numeric());
+            const VSigning numeric = nodep->exprp()->dtypep()->numeric();
+            expDTypep = isFourstate ? nodep->findLogicDType(width, mwidth, numeric)
+                                    : nodep->findBitDType(width, mwidth, numeric);
         }
 
-        iterateCheck(nodep, "Inside expression", nodep->exprp(), CONTEXT_DET, FINAL, subDTypep,
+        iterateCheck(nodep, "Inside expression", nodep->exprp(), CONTEXT_DET, FINAL, expDTypep,
                      EXTEND_EXP);
         for (AstNode *nextip, *itemp = nodep->itemsp(); itemp; itemp = nextip) {
             nextip = itemp->nextp();  // iterate may cause the node to get replaced
             // InsideRange will get replaced with Lte&Gte and finalized later
             if (!VN_IS(itemp, InsideRange))
-                iterateCheck(nodep, "Inside Item", itemp, CONTEXT_DET, FINAL, subDTypep,
+                iterateCheck(nodep, "Inside Item", itemp, CONTEXT_DET, FINAL, expDTypep,
                              EXTEND_EXP);
         }
 
@@ -3788,11 +3792,10 @@ class WidthVisitor final : public VNVisitor {
                 if (nodep->pinsp()) argsp = nodep->pinsp()->unlinkFrBackWithNext();
                 AstNodeFTaskRef* newp = nullptr;
                 if (VN_IS(ftaskp, Task)) {
-                    newp = new AstTaskRef{nodep->fileline(), ftaskp->name(), argsp};
+                    newp = new AstTaskRef{nodep->fileline(), VN_AS(ftaskp, Task), argsp};
                 } else {
-                    newp = new AstFuncRef{nodep->fileline(), ftaskp->name(), argsp};
+                    newp = new AstFuncRef{nodep->fileline(), VN_AS(ftaskp, Func), argsp};
                 }
-                newp->taskp(ftaskp);
                 newp->classOrPackagep(ifacep);
                 nodep->replaceWith(newp);
                 VL_DO_DANGLING(nodep->deleteTree(), nodep);
@@ -3927,11 +3930,10 @@ class WidthVisitor final : public VNVisitor {
                     if (nodep->pinsp()) argsp = nodep->pinsp()->unlinkFrBackWithNext();
                     AstNodeFTaskRef* newp = nullptr;
                     if (VN_IS(ftaskp, Task)) {
-                        newp = new AstTaskRef{nodep->fileline(), ftaskp->name(), argsp};
+                        newp = new AstTaskRef{nodep->fileline(), VN_AS(ftaskp, Task), argsp};
                     } else {
-                        newp = new AstFuncRef{nodep->fileline(), ftaskp->name(), argsp};
+                        newp = new AstFuncRef{nodep->fileline(), VN_AS(ftaskp, Func), argsp};
                     }
-                    newp->taskp(ftaskp);
                     newp->classOrPackagep(classp);
                     nodep->replaceWith(newp);
                     VL_DO_DANGLING(nodep->deleteTree(), nodep);
