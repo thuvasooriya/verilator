@@ -1,6 +1,6 @@
 # DESCRIPTION: Process this file with autoconf to produce a configure script.
 #
-# Copyright 2003-2024 by Wilson Snyder. Verilator is free software; you
+# Copyright 2003-2025 by Wilson Snyder. Verilator is free software; you
 # can redistribute it and/or modify it under the terms of either the GNU Lesser
 # General Public License Version 3 or the Perl Artistic License Version 2.0.
 # SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
@@ -10,7 +10,7 @@
 # Then 'make maintainer-dist'
 #AC_INIT([Verilator],[#.### YYYY-MM-DD])
 #AC_INIT([Verilator],[#.### devel])
-AC_INIT([Verilator],[5.031 devel],
+AC_INIT([Verilator],[5.033 devel],
         [https://verilator.org],
         [verilator],[https://verilator.org])
 
@@ -478,6 +478,7 @@ m4_foreach([cflag],[
         [-Wno-parentheses-equality],
         [-Wno-shadow],
         [-Wno-sign-compare],
+        [-Wno-subobject-linkage],
         [-Wno-tautological-bitwise-compare],
         [-Wno-tautological-compare],
         [-Wno-uninitialized],
@@ -538,7 +539,7 @@ _MY_LDLIBS_CHECK_IFELSE(
   [if test "$CFG_WITH_TCMALLOC" != "no"; then
     CFG_LIBS="$LTCMALLOC $CFG_LIBS";
     # If using tcmalloc, add some extra options to make the compiler not assume
-    # it is using it's own versions of the standard library functions
+    # it is using its own versions of the standard library functions
     _MY_CXX_CHECK_OPT(CFG_CXXFLAGS_SRC,-fno-builtin-malloc)
     _MY_CXX_CHECK_OPT(CFG_CXXFLAGS_SRC,-fno-builtin-calloc)
     _MY_CXX_CHECK_OPT(CFG_CXXFLAGS_SRC,-fno-builtin-realloc)

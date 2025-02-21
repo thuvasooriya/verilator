@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -456,9 +456,7 @@ void EmitCFunc::emitDereference(AstNode* nodep, const string& pointer) {
 
 void EmitCFunc::emitCvtPackStr(AstNode* nodep) {
     if (const AstConst* const constp = VN_CAST(nodep, Const)) {
-        putnbs(nodep, "std::string{");
-        putsQuoted(constp->num().toString());
-        puts("}");
+        emitConstantString(constp);
     } else if (VN_IS(nodep->dtypep(), StreamDType)) {
         putnbs(nodep, "VL_CVT_PACK_STR_ND(");
         iterateAndNextConstNull(nodep);
@@ -494,9 +492,7 @@ void EmitCFunc::emitConstant(AstConst* nodep, AstVarRef* assigntop, const string
     } else if (nodep->num().isFourState()) {
         nodep->v3warn(E_UNSUPPORTED, "Unsupported: 4-state numbers in this context");
     } else if (nodep->num().isString()) {
-        putnbs(nodep, "std::string{");
-        putsQuoted(nodep->num().toString());
-        puts("}");
+        emitConstantString(nodep);
     } else if (nodep->isWide()) {
         int upWidth = nodep->num().widthMin();
         int chunks = 0;
@@ -592,6 +588,13 @@ void EmitCFunc::emitConstant(AstConst* nodep, AstVarRef* assigntop, const string
         // But must be here, or <= comparisons etc may end up signed
         puts("U");
     }
+}
+
+void EmitCFunc::emitConstantString(const AstConst* nodep) {
+    putnbs(nodep, "std::string{");
+    const string str = nodep->num().toString();
+    if (!str.empty()) putsQuoted(str);
+    puts("}");
 }
 
 void EmitCFunc::emitSetVarConstant(const string& assignString, AstConst* constp) {

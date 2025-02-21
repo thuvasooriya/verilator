@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -100,9 +100,15 @@ private:
         if (local || prot) {
             const auto refClassp = VN_CAST(m_modp, Class);
             const char* how = nullptr;
-            if (local && defClassp && refClassp != defClassp) {
+            // Inner nested classes can access `local` or `protected` members of their outer class
+            const auto nestedAccess = [refClassp](const AstClass*, const AstNode* memberp) {
+                return memberp == refClassp;
+            };
+            if (local && defClassp
+                && ((refClassp != defClassp) && !(defClassp->existsMember(nestedAccess)))) {
                 how = "'local'";
-            } else if (prot && defClassp && !AstClass::isClassExtendedFrom(refClassp, defClassp)) {
+            } else if (prot && defClassp && !AstClass::isClassExtendedFrom(refClassp, defClassp)
+                       && !(defClassp->existsMember(nestedAccess))) {
                 how = "'protected'";
             }
             if (how) {

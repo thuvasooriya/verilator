@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -528,9 +528,11 @@ void fillinCosts(V3Graph* execMTaskGraphp) {
 
     if (missingProfiles) {
         if (FileLine* const fl = V3Config::getProfileDataFileLine()) {
-            fl->v3warn(PROFOUTOFDATE, "Profile data for mtasks may be out of date. "
-                                          << missingProfiles << " of " << totalEstimates
-                                          << " mtasks had no data");
+            if (V3Config::containsMTaskProfileData()) {
+                fl->v3warn(PROFOUTOFDATE, "Profile data for mtasks may be out of date. "
+                                              << missingProfiles << " of " << totalEstimates
+                                              << " mtasks had no data");
+            }
         }
     }
 }

@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -57,7 +57,7 @@ class UnrollVisitor final : public VNVisitor {
     bool cantUnroll(AstNode* nodep, const char* reason) const {
         if (m_generate)
             nodep->v3warn(E_UNSUPPORTED, "Unsupported: Can't unroll generate for; " << reason);
-        UINFO(3, "   Can't Unroll: " << reason << " :" << nodep << endl);
+        UINFO(4, "   Can't Unroll: " << reason << " :" << nodep << endl);
         // if (debug() >= 9) nodep->dumpTree("-  cant: ");
         V3Stats::addStatSum("Unrolling gave up, "s + reason, 1);
         return false;
@@ -210,7 +210,7 @@ class UnrollVisitor final : public VNVisitor {
         SimulateVisitor simvis;
         simvis.mainParamEmulate(clonep);
         if (!simvis.optimizable()) {
-            UINFO(3, "Unable to simulate" << endl);
+            UINFO(4, "Unable to simulate" << endl);
             if (debug() >= 9) nodep->dumpTree("-  _simtree: ");
             VL_DO_DANGLING(clonep->deleteTree(), clonep);
             return false;

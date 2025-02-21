@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -62,6 +62,7 @@ class V3CCtorsBuilder final {
         AstCFunc* const funcp = new AstCFunc{m_modp->fileline(), funcName, nullptr, "void"};
         funcp->isStatic(false);
         funcp->isLoose(!m_type.isClass());
+        funcp->keepIfEmpty(true);  // TODO relax
         funcp->declPrivate(true);
         funcp->slow(!m_type.isClass());  // Only classes construct on fast path
         string preventUnusedStmt;
@@ -210,6 +211,7 @@ void V3CCtors::evalAsserts() {
     funcp->declPrivate(true);
     funcp->isStatic(false);
     funcp->isLoose(true);
+    funcp->keepIfEmpty(true);
     funcp->slow(false);
     funcp->ifdef("VL_DEBUG");
     modp->addStmtsp(funcp);

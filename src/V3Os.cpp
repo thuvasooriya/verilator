@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -91,9 +91,9 @@ string V3Os::getenvStr(const string& envvar, const string& defaultValue) {
 
 void V3Os::setenvStr(const string& envvar, const string& value, const string& why) {
     if (why != "") {
-        UINFO(1, "export " << envvar << "=" << value << " # " << why << endl);
+        UINFO(1, "export " << envvar << "='" << value << "'  # " << why << endl);
     } else {
-        UINFO(1, "export " << envvar << "=" << value << endl);
+        UINFO(1, "export " << envvar << "='" << value << "'" << endl);
     }
 #if defined(_WIN32) || defined(__MINGW32__)
     _putenv_s(envvar.c_str(), value.c_str());

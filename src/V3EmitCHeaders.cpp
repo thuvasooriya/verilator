@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -248,7 +248,43 @@ class EmitCHeader final : public EmitCConstInit {
             putns(itemp, itemp->dtypep()->cType(itemp->nameProtect(), false, false));
             puts(";\n");
         }
+        // Three helper functions for struct constrained randomization:
+        // - memberNames: Get member names
+        // - getMembers: Access member references
+        // - memberIndices: Retrieve member indices
+        if (sdtypep->isConstrainedRand()) {
+            putns(sdtypep, "\nstd::vector<std::string> memberNames(void) const {\n");
+            puts("return {");
+            for (const AstMemberDType* itemp = sdtypep->membersp(); itemp;
+                 itemp = VN_AS(itemp->nextp(), MemberDType)) {
+                if (itemp->isConstrainedRand()) putns(itemp, "\"" + itemp->shortName() + "\"");
+                if (itemp->nextp() && VN_AS(itemp->nextp(), MemberDType)->isConstrainedRand())
+                    puts(",\n");
+            }
+            puts("};\n}\n");
 
+            putns(sdtypep, "\nauto memberIndices(void) const {\n");
+            puts("return std::index_sequence_for<");
+            for (const AstMemberDType* itemp = sdtypep->membersp(); itemp;
+                 itemp = VN_AS(itemp->nextp(), MemberDType)) {
+                if (itemp->isConstrainedRand())
+                    putns(itemp, itemp->dtypep()->cType("", false, false));
+                if (itemp->nextp() && VN_AS(itemp->nextp(), MemberDType)->isConstrainedRand())
+                    puts(",\n");
+            }
+            puts(">{};\n}\n");
+
+            putns(sdtypep, "\ntemplate <typename T>");
+            putns(sdtypep, "\nauto getMembers(T& obj) {\n");
+            puts("return std::tie(");
+            for (const AstMemberDType* itemp = sdtypep->membersp(); itemp;
+                 itemp = VN_AS(itemp->nextp(), MemberDType)) {
+                if (itemp->isConstrainedRand()) putns(itemp, "obj." + itemp->nameProtect());
+                if (itemp->nextp() && VN_AS(itemp->nextp(), MemberDType)->isConstrainedRand())
+                    puts(", ");
+            }
+            puts(");\n}\n");
+        }
         putns(sdtypep, "\nbool operator==(const " + EmitCBase::prefixNameProtect(sdtypep)
                            + "& rhs) const {\n");
         puts("return ");
@@ -262,7 +298,27 @@ class EmitCHeader final : public EmitCConstInit {
         putns(sdtypep, "bool operator!=(const " + EmitCBase::prefixNameProtect(sdtypep)
                            + "& rhs) const {\n");
         puts("return !(*this == rhs);\n}\n");
+        putns(sdtypep, "\nbool operator<(const " + EmitCBase::prefixNameProtect(sdtypep)
+                           + "& rhs) const {\n");
+        puts("return ");
+        puts("std::tie(");
+        for (const AstMemberDType* itemp = sdtypep->membersp(); itemp;
+             itemp = VN_AS(itemp->nextp(), MemberDType)) {
+            if (itemp != sdtypep->membersp()) puts(", ");
+            putns(itemp, itemp->nameProtect());
+        }
+        puts(")\n    <  std::tie(");
+        for (const AstMemberDType* itemp = sdtypep->membersp(); itemp;
+             itemp = VN_AS(itemp->nextp(), MemberDType)) {
+            if (itemp != sdtypep->membersp()) puts(", ");
+            putns(itemp, "rhs." + itemp->nameProtect());
+        }
+        puts(");\n");
+        puts("}\n");
         puts("};\n");
+        puts("template <>\n");
+        putns(sdtypep, "struct VlIsCustomStruct<" + EmitCBase::prefixNameProtect(sdtypep)
+                           + "> : public std::true_type {};\n");
     }
 
     // getfunc: VL_ASSIGNSEL_XX(rbits, obits, off, lhsdata, rhsdata);

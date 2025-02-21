@@ -3,7 +3,7 @@
 //
 // Code available from: https://verilator.org
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you can
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you can
 // redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -175,6 +175,9 @@ enum class VerilatedAssertDirectiveType : uint8_t {
 using VerilatedAssertType_t = std::underlying_type<VerilatedAssertType>::type;
 using VerilatedAssertDirectiveType_t = std::underlying_type<VerilatedAssertDirectiveType>::type;
 
+// Type trait for custom struct
+template <typename>
+struct VlIsCustomStruct : public std::false_type {};
 //=============================================================================
 // Utility functions
 
@@ -726,7 +729,7 @@ public:  // But internals only - called from VerilatedModule's
                    const Type& type) VL_MT_UNSAFE;
     void exportInsert(int finalize, const char* namep, void* cb) VL_MT_UNSAFE;
     void varInsert(int finalize, const char* namep, void* datap, bool isParam,
-                   VerilatedVarType vltype, int vlflags, int dims, ...) VL_MT_UNSAFE;
+                   VerilatedVarType vltype, int vlflags, int udims, int pdims, ...) VL_MT_UNSAFE;
     // ACCESSORS
     const char* name() const VL_MT_SAFE_POSTINIT { return m_namep; }
     const char* identifier() const VL_MT_SAFE_POSTINIT { return m_identifierp; }

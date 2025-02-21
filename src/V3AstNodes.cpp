@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -570,15 +570,28 @@ string AstVar::vlEnumDir() const {
 string AstVar::vlPropDecl(const string& propName) const {
     string out;
 
+    std::vector<int> plims;  // Packed dimension limits
     std::vector<int> ulims;  // Unpacked dimension limits
-    for (const AstNodeDType* dtp = dtypep(); dtp;) {
-        dtp = dtp->skipRefp();  // Skip AstRefDType/AstTypedef, or return same node
-        if (const AstNodeArrayDType* const adtypep = VN_CAST(dtp, NodeArrayDType)) {
-            ulims.push_back(adtypep->declRange().left());
-            ulims.push_back(adtypep->declRange().right());
-            dtp = adtypep->subDTypep();
-        } else {
-            break;  // AstBasicDType - nothing below
+
+    if (const AstBasicDType* const bdtypep = basicp()) {
+        for (const AstNodeDType* dtp = dtypep(); dtp;) {
+            dtp = dtp->skipRefp();  // Skip AstRefDType/AstTypedef, or return same node
+            if (const AstNodeArrayDType* const adtypep = VN_CAST(dtp, NodeArrayDType)) {
+                if (VN_IS(dtp, PackArrayDType)) {
+                    plims.push_back(adtypep->declRange().left());
+                    plims.push_back(adtypep->declRange().right());
+                } else {
+                    ulims.push_back(adtypep->declRange().left());
+                    ulims.push_back(adtypep->declRange().right());
+                }
+                dtp = adtypep->subDTypep();
+            } else {
+                if (bdtypep->isRanged()) {
+                    plims.push_back(bdtypep->left());
+                    plims.push_back(bdtypep->right());
+                }
+                break;  // AstBasicDType - nothing below
+            }
         }
     }
 
@@ -595,21 +608,35 @@ string AstVar::vlPropDecl(const string& propName) const {
         out += "};\n";
     }
 
+    if (!plims.empty()) {
+        out += "static const int " + propName + "__plims[";
+        out += cvtToStr(plims.size());
+        out += "] = {";
+        auto it = plims.cbegin();
+        out += cvtToStr(*it);
+        while (++it != plims.cend()) {
+            out += ", ";
+            out += cvtToStr(*it);
+        }
+        out += "};\n";
+    }
+
     out += "static const VerilatedVarProps ";
     out += propName;
     out += "(";
     out += vlEnumType();  // VLVT_UINT32 etc
     out += ", " + vlEnumDir();  // VLVD_IN etc
-    if (const AstBasicDType* const bdtypep = basicp()) {
-        out += ", VerilatedVarProps::Packed()";
-        out += ", " + cvtToStr(bdtypep->left());
-        out += ", " + cvtToStr(bdtypep->right());
-    }
 
     if (!ulims.empty()) {
-        out += ", VerilatedVarProps::Unpacked()";
+        out += ", VerilatedVarProps::Unpacked{}";
         out += ", " + cvtToStr(ulims.size() / 2);
         out += ", " + propName + "__ulims";
+    }
+
+    if (!plims.empty()) {
+        out += ", VerilatedVarProps::Packed{}";
+        out += ", " + cvtToStr(plims.size() / 2);
+        out += ", " + propName + "__plims";
     }
 
     out += ");\n";
@@ -1923,6 +1950,20 @@ void AstJumpLabel::dump(std::ostream& str) const {
 }
 void AstJumpLabel::dumpJson(std::ostream& str) const { dumpJsonGen(str); }
 
+void AstMemberDType::dump(std::ostream& str) const {
+    this->AstNodeDType::dump(str);
+    if (isConstrainedRand()) str << " [CONSTRAINEDRAND]";
+    if (name() != "") str << " name=" << name();
+    if (tag() != "") str << " tag=" << tag();
+}
+
+void AstMemberDType::dumpJson(std::ostream& str) const {
+    dumpJsonBoolFunc(str, isConstrainedRand);
+    dumpJsonStrFunc(str, name);
+    dumpJsonStrFunc(str, tag);
+    dumpJsonGen(str);
+}
+
 void AstMemberDType::dumpSmall(std::ostream& str) const {
     this->AstNodeDType::dumpSmall(str);
     str << "member";
@@ -2838,15 +2879,17 @@ void AstCFile::dumpJson(std::ostream& str) const {
 void AstCFunc::dump(std::ostream& str) const {
     this->AstNode::dump(str);
     if (slow()) str << " [SLOW]";
-    if (dpiPure()) str << " [DPIPURE]";
     if (isStatic()) str << " [STATIC]";
+    if (dpiContext()) str << " [DPICTX]";
     if (dpiExportDispatcher()) str << " [DPIED]";
     if (dpiExportImpl()) str << " [DPIEI]";
     if (dpiImportPrototype()) str << " [DPIIP]";
     if (dpiImportWrapper()) str << " [DPIIW]";
-    if (dpiContext()) str << " [DPICTX]";
+    if (dpiPure()) str << " [DPIPURE]";
     if (isConstructor()) str << " [CTOR]";
     if (isDestructor()) str << " [DTOR]";
+    if (isMethod()) str << " [METHOD]";
+    if (isLoose()) str << " [LOOSE]";
     if (isVirtual()) str << " [VIRT]";
     if (isCoroutine()) str << " [CORO]";
     if (needProcess()) str << " [NPRC]";
