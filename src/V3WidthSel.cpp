@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -305,13 +305,19 @@ class WidthSelVisitor final : public VNVisitor {
             VL_DO_DANGLING(pushDeletep(nodep), nodep);
         } else if (VN_IS(ddtypep, BasicDType) && ddtypep->isString()) {
             // SELBIT(string, index) -> GETC(string, index)
-            const AstNodeVarRef* const varrefp = VN_CAST(fromp, NodeVarRef);
-            if (!varrefp) {
-                nodep->v3warn(E_UNSUPPORTED,
-                              "Unsupported: String array operation on non-variable");
+            AstNodeExpr* exprp = fromp;
+            while (true) {
+                if (AstMemberSel* const memberselp = VN_CAST(exprp, MemberSel)) {
+                    exprp = memberselp->fromp();
+                } else if (AstStructSel* const structselp = VN_CAST(exprp, StructSel)) {
+                    exprp = structselp->fromp();
+                } else {
+                    break;
+                }
             }
+            const AstNodeVarRef* const varrefp = VN_CAST(exprp, NodeVarRef);
             AstNodeExpr* newp;
-            if (varrefp && varrefp->access().isReadOnly()) {
+            if (!varrefp || varrefp->access().isReadOnly()) {
                 newp = new AstGetcN{nodep->fileline(), fromp, rhsp};
             } else {
                 newp = new AstGetcRefN{nodep->fileline(), fromp, rhsp};

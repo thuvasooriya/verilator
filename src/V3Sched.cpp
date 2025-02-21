@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -70,6 +70,7 @@ AstCFunc* makeSubFunction(AstNetlist* netlistp, const string& name, bool slow) {
 AstCFunc* makeTopFunction(AstNetlist* netlistp, const string& name, bool slow) {
     AstCFunc* const funcp = makeSubFunction(netlistp, name, slow);
     funcp->entryPoint(true);
+    funcp->keepIfEmpty(true);
     return funcp;
 }
 

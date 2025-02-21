@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -188,8 +188,9 @@ bool AstVarRef::sameNode(const AstVarRef* samep) const {
     if (varScopep()) {
         return (varScopep() == samep->varScopep() && access() == samep->access());
     } else {
-        return (selfPointer() == samep->selfPointer() && varp()->name() == samep->varp()->name()
-                && access() == samep->access());
+        return (selfPointer() == samep->selfPointer()
+                && classOrPackagep() == samep->classOrPackagep()
+                && varp()->name() == samep->varp()->name() && access() == samep->access());
     }
 }
 bool AstVarRef::sameNoLvalue(AstVarRef* samep) const {
@@ -197,6 +198,7 @@ bool AstVarRef::sameNoLvalue(AstVarRef* samep) const {
         return (varScopep() == samep->varScopep());
     } else {
         return (selfPointer() == samep->selfPointer()
+                && classOrPackagep() == samep->classOrPackagep()
                 && (!selfPointer().isEmpty() || !samep->selfPointer().isEmpty())
                 && varp()->name() == samep->varp()->name());
     }

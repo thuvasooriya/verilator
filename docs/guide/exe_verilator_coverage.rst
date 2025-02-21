@@ -1,4 +1,4 @@
-.. Copyright 2003-2024 by Wilson Snyder.
+.. Copyright 2003-2025 by Wilson Snyder.
 .. SPDX-License-Identifier: LGPL-3.0-only OR Artistic-2.0
 
 verilator_coverage
@@ -58,7 +58,7 @@ to read multiple inputs.  If no data file is specified, by default,
 Specifies the directory name to which source files with annotated coverage
 data should be written.
 
-Points are children of each line coverage- branches or toggle points.
+Points are children of each line coverage- branches, expressions or toggle points.
 When point counts are aggregated into a line, the minimum and maximum counts
 are used to determine the status of the line (complete, partial, failing)
 The count is equal to the maximum of the points.

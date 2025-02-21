@@ -3,7 +3,7 @@
 //
 // Code available from: https://verilator.org
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you can
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you can
 // redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -474,6 +474,7 @@ using ssize_t = uint32_t;  ///< signed size_t; returned from read()
 #ifndef VL_VALUE_STRING_MAX_WORDS
     #define VL_VALUE_STRING_MAX_WORDS 64  ///< Max size in words of String conversion operation
 #endif
+#define VL_VALUE_STRING_MAX_CHARS (VL_VALUE_STRING_MAX_WORDS) * 4
 
 //=========================================================================
 // Base macros

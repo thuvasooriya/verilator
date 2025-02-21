@@ -6,7 +6,7 @@
 //
 //*************************************************************************
 //
-// Copyright 2003-2024 by Wilson Snyder. This program is free software; you
+// Copyright 2003-2025 by Wilson Snyder. This program is free software; you
 // can redistribute it and/or modify it under the terms of either the GNU
 // Lesser General Public License Version 3 or the Perl Artistic License
 // Version 2.0.
@@ -287,8 +287,8 @@ class LifeVisitor final : public VNVisitor {
         }
     }
     void visit(AstNodeAssign* nodep) override {
-        if (nodep->isTimingControl()) {
-            // V3Life doesn't understand time sense - don't optimize
+        if (nodep->isTimingControl() || VN_IS(nodep, AssignForce)) {
+            // V3Life doesn't understand time sense nor force assigns - don't optimize
             setNoopt();
             iterateChildren(nodep);
             return;
