@@ -146,12 +146,15 @@ Summary:
 
    This option was named `--bin` before version 4.228.
 
-.. option:: --build-jobs [<value>]
+.. option:: --build-jobs <value>
 
    Specify the level of parallelism for :vlopt:`--build`. If zero, uses the
    number of threads in the current hardware. Otherwise, the <value> must
    be a positive integer specifying the maximum number of parallel build
    jobs.
+
+   If not provided, and :vlopt:`-j` is provided, the :vlopt:`-j` value is
+   used.
 
    This forms the :command:`make` option ``-j`` value, unless the
    :option:`MAKEFLAGS` environment variable contains ``-jobserver-auth``,
@@ -490,8 +493,8 @@ Summary:
    out.  Beware of enabling debugging messages, as they will also go to
    standard out. See :vlopt:`--no-std`, which is implied by this.
 
-   See also :vlopt:`--dump-defines`, :vlopt:`-P`, and
-   :vlopt:`--pp-comments` options.
+   See also :vlopt:`--dump-defines`, :vlopt:`-P`, :vlopt:`--pp-comments`
+   and :vlopt:`--preproc-resolve` options.
 
 .. option:: --emit-accessors
 
@@ -641,6 +644,11 @@ Summary:
    are typically used only when recommended by a maintainer to help debug
    or work around an issue.
 
+.. option:: -fno-var-split
+
+   Do not attempt to split variables automatically. Variables explicitly
+   annotated with :option:`/*verilator&32;split_var*/` are still split.
+
 .. option:: -future0 <option>
 
    Rarely needed.  Suppress an unknown Verilator option for an option that
@@ -788,9 +796,12 @@ Summary:
 
    Specify the level of parallelism for :vlopt:`--build` if
    :vlopt:`--build-jobs` isn't provided, and the internal compilation steps
-   of Verilator if :vlopt:`--verilate-jobs` isn't provided. If zero, uses
-   the number of threads in the current hardware. Otherwise, must be a
-   positive integer specifying the maximum number of parallel build jobs.
+   of Verilator if :vlopt:`--verilate-jobs` isn't provided. Also sets
+   :vlopt:`--output-groups` if isn't provided.
+
+   If zero, uses the number of threads in the current hardware. Otherwise,
+   must be a positive integer specifying the maximum number of parallel
+   build jobs.
 
 .. option:: --json-only
 
@@ -901,10 +912,12 @@ Summary:
 
    Generates a script for the specified build tool.
 
-   Supported values are ``gmake`` for GNU Make and ``cmake`` for CMake.
-   Both can be specified together.  If no build tool is specified, gmake is
-   assumed.  The executable of gmake can be configured via the environment
-   variable :option:`MAKE`.
+   Supported values are ``gmake`` for GNU Make, or ``cmake`` for CMake, or
+   ``json`` to create a JSON file to feed other build tools.
+
+   Multiple options can be specified together.  If no build tool is
+   specified, gmake is assumed.  The executable of gmake can be configured
+   via the environment variable :option:`MAKE`.
 
    When using :vlopt:`--build`, Verilator takes over the responsibility of
    building the model library/executable.  For this reason :option:`--make`
@@ -1016,18 +1029,24 @@ Summary:
 .. option:: --output-groups <numfiles>
 
    Enables concatenating the output .cpp files into the given number of
-   effective output .cpp files.  This is useful if the compiler startup
-   overhead from compiling many small files becomes unacceptable,
-   which can happen in designs making extensive use of SystemVerilog classes,
-   templates or generate blocks.
+   effective output .cpp files.  This minimizes the compiler startup
+   overhead from compiling many small files, which can happen in designs
+   making extensive use of SystemVerilog classes, templates or generate
+   blocks.
 
    Using :vlopt:`--output-groups` can adversely impact caching and stability
    (as in reproducibility) of compiled code.  Compilation of larger .cpp
    files also has higher memory requirements.  Too low values might result in
-   swap thrashing with large designs, high values give no benefits.  The
-   value should range from 2 to 20 for small to medium designs.
+   swap thrashing with large designs, high values give no benefits.
 
-   Default is zero, which disables this feature.
+   Typically setting the number of files to the hardware thread count,
+   corresponding to number of compiler jobs that can run in parallel, will
+   lead to fastest build times. (e.g. for small to medium designs the value
+   should range from 2 to 20.)
+
+   Zero disables this feature.  Negative one, the default, sets the groups
+   to the value from :vlopt:`--build-jobs`, or from :vlopt:`-j`, or zero in
+   that priority.
 
 .. option:: --output-split <statements>
 
@@ -1152,7 +1171,15 @@ Summary:
    prepended to the name of the :vlopt:`--top` option, or V prepended to
    the first Verilog filename passed on the command line.
 
-.. option:: --preproc-token-limit
+.. option:: --preproc-resolve
+
+   With :vlopt:`-E`, resolve referenced instance modules, to include
+   preprocessed output of submodules.  Used to convert a multi-file design
+   into a single output file.
+
+   See :vlopt:`-E`.
+
+.. option:: --preproc-token-limit <value>
 
    Rarely needed. Configure the limit of the number of tokens Verilator
    can process on a single line to prevent infinite loops and other hangs.
@@ -1606,6 +1633,12 @@ Summary:
 
    Disable tracing of parameters.
 
+.. option:: --trace-saif
+
+   Enable SAIF tracing in the model. This overrides :vlopt:`--trace`.
+   Specification of this format can be found in `IEEE 1801-2018
+   <https://ieeexplore.ieee.org/document/8686430>`_ (see Annex I).
+
 .. option:: --trace-structs
 
    Enable tracing to show the name of packed structure, union, and packed
@@ -1692,12 +1725,15 @@ Summary:
    execute only the build. This can be useful for rebuilding the Verilated code
    produced by a previous invocation of Verilator.
 
-.. option:: --verilate-jobs [<value>]
+.. option:: --verilate-jobs <value>
 
    Specify the level of parallelism for the internal compilation steps of
    Verilator. If zero, uses the number of threads in the current hardware.
    Otherwise, must be a positive integer specifying the maximum number of
    parallel build jobs.
+
+   If not provided, and :vlopt:`-j` is provided, the :vlopt:`-j` value is
+   used.
 
    See also :vlopt:`-j`.
 
@@ -2086,6 +2122,20 @@ The grammar of configuration commands is as follows:
    Specifies that the module contains parameters a :vlopt:`--hierarchical` block. This option
    is used internally to specify parameters for deparametrized hier block instances.
    This option should not be used directly.
+   See :ref:`Hierarchical Verilation`.
+
+.. option:: hier_workers -hier-dpi "<function_name>" -workers <worker_count>
+
+   Specifies how many threads need to be used for scheduling hierarchical DPI
+   tasks. This data is inserted internally during :vlopt:`--hierarchical`,
+   based on value specified in `hier_workers -module`. This option
+   should not be used directly. See :ref:`Hierarchical Verilation`.
+
+.. option:: hier_workers -module "<module_name>" -workers <worker_count>
+
+   Specifies how many threads need to be used for scheduling given module with
+   :option:`/*verilator&32;hier_block*/` metacomment. This number needs to be
+   smaller than :vlopt:`--threads` to fit in a thread schedule.
    See :ref:`Hierarchical Verilation`.
 
 .. option:: inline -module "<modulename>"

@@ -235,7 +235,7 @@ class RandomizeMarkVisitor final : public VNVisitor {
                                   "Unsupported: 'rand_mode()' on dynamic array element");
                     valid = false;
                 } else {
-                    methodHardp->v3fatal("Unknown rand_mode() receiver");
+                    methodHardp->v3fatalSrc("Unknown rand_mode() receiver");
                 }
             }
             if (!nodep->pinsp() && VN_IS(nodep->backp(), StmtExpr)) {
@@ -392,6 +392,7 @@ class RandomizeMarkVisitor final : public VNVisitor {
                     exprp = nullptr;
                 }
                 if (randVarp == fromVarp) break;
+                UASSERT_OBJ(randVarp, nodep, "No rand variable found");
                 AstNode* backp = randVarp;
                 while (backp && !VN_IS(backp, Class)) backp = backp->backp();
                 RandomizeMode randMode = {};
@@ -712,9 +713,12 @@ class ConstraintExprVisitor final : public VNVisitor {
     }
     void visit(AstStructSel* nodep) override {
         if (VN_IS(nodep->fromp()->dtypep()->skipRefp(), StructDType)) {
-            AstMemberDType* memberp
-                = VN_AS(nodep->fromp()->dtypep()->skipRefp(), StructDType)->membersp();
-            while (memberp->nextp()) {
+            AstNodeExpr* const fromp = nodep->fromp();
+            if (VN_IS(fromp, StructSel)) {
+                VN_AS(fromp->dtypep()->skipRefp(), StructDType)->markConstrainedRand(true);
+            }
+            AstMemberDType* memberp = VN_AS(fromp->dtypep()->skipRefp(), StructDType)->membersp();
+            while (memberp) {
                 if (memberp->name() == nodep->name()) {
                     memberp->markConstrainedRand(true);
                     break;
@@ -733,7 +737,14 @@ class ConstraintExprVisitor final : public VNVisitor {
     void visit(AstAssocSel* nodep) override {
         if (editFormat(nodep)) return;
         FileLine* const fl = nodep->fileline();
-        if (VN_IS(nodep->bitp(), CvtPackString) && VN_IS(nodep->bitp()->dtypep(), BasicDType)) {
+        if (VN_IS(nodep->bitp(), VarRef) && VN_AS(nodep->bitp(), VarRef)->isString()) {
+            VNRelinker handle;
+            AstNodeExpr* const idxp
+                = new AstSFormatF{fl, "#x%32p", false, nodep->bitp()->unlinkFrBack(&handle)};
+            handle.relink(idxp);
+            editSMT(nodep, nodep->fromp(), idxp);
+        } else if (VN_IS(nodep->bitp(), CvtPackString)
+                   && VN_IS(nodep->bitp()->dtypep(), BasicDType)) {
             AstCvtPackString* const stringp = VN_AS(nodep->bitp(), CvtPackString);
             const size_t stringSize = VN_AS(stringp->lhsp(), Const)->width();
             if (stringSize > 128) {
@@ -1013,7 +1024,7 @@ class CaptureVisitor final : public VNVisitor {
 
     AstVar* getVar(AstVar* const varp) const {
         const auto it = m_varCloneMap.find(varp);
-        if (it == m_varCloneMap.end()) { return nullptr; }
+        if (it == m_varCloneMap.end()) return nullptr;
         return it->second;
     }
 

@@ -4,6 +4,10 @@
 // any use, without warranty, 2024 by Wilson Snyder.
 // SPDX-License-Identifier: CC0-1.0
 
+class cls;
+    rand int x;
+endclass
+
 module t (/*AUTOARG*/
     // Inputs
     clk
@@ -37,10 +41,18 @@ module t (/*AUTOARG*/
         return a & b;
     endfunction
 
+    localparam int num_intfs = 4;
+    intf the_intfs [num_intfs-1:0] ();
+    genvar intf_i;
+    for (intf_i = 0; intf_i < num_intfs; intf_i++) begin
+        always_comb the_intfs[intf_i].t = cyc[intf_i];
+    end
+
     always @ (posedge clk) begin
         cyc <= cyc + 1;
         if ((~cyc[0] && cyc[1]) || (~cyc[2] && cyc[3])) $write("");
         if ((~cyc2[32] && cyc2[33]) || (~cyc2[34] && cyc2[35])) $write("");
+        if ((~the_intfs[0].t && the_intfs[1].t) || (~the_intfs[2].t && the_intfs[3].t)) $write("");
         if ((~t1 && t2) || (~t3 && t4)) $write("");
         if (t3 && (t1 == t2)) $write("");
         if (123 == (124 - 32'(t1 || t2))) $write("");
@@ -116,6 +128,8 @@ module t (/*AUTOARG*/
 
     logic ta, tb, tc;
     initial begin
+        cls obj = new;
+        cls null_obj = null;
         int q[5];
         int qv[$];
 
@@ -132,6 +146,8 @@ module t (/*AUTOARG*/
             tb = ta;
             ta = '0;
         end
+        if (!bit'(obj.randomize() with {x < 100;})) $write("");
+        if (null_obj != null && null_obj.x == 5) $write("");
     end
 
     sub the_sub_1 (.p(t1), .q(t2));
@@ -163,3 +179,7 @@ module sub (
     end
 
 endmodule
+
+interface intf();
+    logic t;
+endinterface

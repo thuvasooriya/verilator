@@ -450,12 +450,13 @@ BISONPRE_VERSION(3.7,%define api.header.include {"V3ParseBison.h"})
 
 %token<strp>            yaTABLELINE     "TABLE LINE"
 
-%token<strp>            yaSCHDR         "`systemc_header BLOCK"
-%token<strp>            yaSCINT         "`systemc_ctor BLOCK"
-%token<strp>            yaSCIMP         "`systemc_dtor BLOCK"
-%token<strp>            yaSCIMPH        "`systemc_interface BLOCK"
-%token<strp>            yaSCCTOR        "`systemc_implementation BLOCK"
-%token<strp>            yaSCDTOR        "`systemc_imp_header BLOCK"
+%token<strp>            yaSCCTOR        "`systemc_ctor block"
+%token<strp>            yaSCDTOR        "`systemc_dtor block"
+%token<strp>            yaSCHDR         "`systemc_header block"
+%token<strp>            yaSCHDRP        "`systemc_header_post block"
+%token<strp>            yaSCIMP         "`systemc_implementation block"
+%token<strp>            yaSCIMPH        "`systemc_imp_header block"
+%token<strp>            yaSCINT         "`systemc_interface block"
 
 %token<fl>              yVLT_CLOCKER                "clocker"
 %token<fl>              yVLT_CLOCK_ENABLE           "clock_enable"
@@ -466,6 +467,7 @@ BISONPRE_VERSION(3.7,%define api.header.include {"V3ParseBison.h"})
 %token<fl>              yVLT_FULL_CASE              "full_case"
 %token<fl>              yVLT_HIER_BLOCK             "hier_block"
 %token<fl>              yVLT_HIER_PARAMS            "hier_params"
+%token<fl>              yVLT_HIER_WORKERS           "hier_workers"
 %token<fl>              yVLT_INLINE                 "inline"
 %token<fl>              yVLT_ISOLATE_ASSIGNMENTS    "isolate_assignments"
 %token<fl>              yVLT_LINT_OFF               "lint_off"
@@ -503,6 +505,7 @@ BISONPRE_VERSION(3.7,%define api.header.include {"V3ParseBison.h"})
 %token<fl>              yVLT_D_SCOPE    "--scope"
 %token<fl>              yVLT_D_TASK     "--task"
 %token<fl>              yVLT_D_VAR      "--var"
+%token<fl>              yVLT_D_WORKERS  "--workers"
 
 %token<strp>            yaD_PLI         "${pli-system}"
 
@@ -545,7 +548,7 @@ BISONPRE_VERSION(3.7,%define api.header.include {"V3ParseBison.h"})
 // for example yP_ for punctuation based operators.
 // Double underscores "yX__Y" means token X followed by Y,
 // and "yX__ETC" means X folled by everything but Y(s).
-%token<fl>              ya1STEP         "1step"
+%token<fl>              y1STEP          "1step"
 %token<fl>              yACCEPT_ON      "accept_on"
 %token<fl>              yALIAS          "alias"
 %token<fl>              yALWAYS         "always"
@@ -1479,13 +1482,13 @@ portsStarE<nodep>:              // IEEE: .* + list_of_ports + list_of_port_decla
         ;
 
 list_of_portsE<nodep>:          // IEEE: [ list_of_ports + list_of_port_declarations ]
-                portAndTagE                     { $$ = $1; }
+                portAndTagE                             { $$ = $1; }
         |       list_of_portsE ',' portAndTagE          { $$ = addNextNull($1, $3); }
         ;
 
 list_of_ports<nodep>:           // IEEE: list_of_ports + list_of_port_declarations
-                portAndTag                      { $$ = $1; }
-        |       list_of_portsE ',' portAndTagE  { $$ = addNextNull($1, $3); }
+                portAndTag                              { $$ = $1; }
+        |       list_of_portsE ',' portAndTagE          { $$ = addNextNull($1, $3); }
         ;
 
 portAndTagE<nodep>:
@@ -1584,33 +1587,43 @@ port<nodep>:                    // ==IEEE: port
         //
         |       portDirNetE data_type           portSig variable_dimensionListE sigAttrListE
                         { $$ = $3; VARDTYPE($2); VARIOANSI(); addNextNull($$, VARDONEP($$, $4, $5)); }
+        |       portDirNetE data_type           portSig variable_dimensionListE sigAttrListE '=' constExpr
+                        { $$ = $3; VARDTYPE($2); VARIOANSI();
+                          if (AstVar* vp = VARDONEP($$, $4, $5)) { addNextNull($$, vp); vp->valuep($7); } }
         |       portDirNetE yVAR data_type      portSig variable_dimensionListE sigAttrListE
                         { $$ = $4; VARDTYPE($3); VARIOANSI(); addNextNull($$, VARDONEP($$, $5, $6)); }
+        |       portDirNetE yVAR data_type      portSig variable_dimensionListE sigAttrListE '=' constExpr
+                        { $$ = $4; VARDTYPE($3); VARIOANSI();
+                          if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
         |       portDirNetE yVAR implicit_typeE portSig variable_dimensionListE sigAttrListE
                         { $$ = $4; VARDTYPE($3); VARIOANSI(); addNextNull($$, VARDONEP($$, $5, $6)); }
+        |       portDirNetE yVAR implicit_typeE portSig variable_dimensionListE sigAttrListE '=' constExpr
+                        { $$ = $4; VARDTYPE($3); VARIOANSI();
+                          if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
         |       portDirNetE signing             portSig variable_dimensionListE sigAttrListE
                         { $$ = $3;
                           AstNodeDType* const dtp = new AstBasicDType{$3->fileline(), LOGIC_IMPLICIT, $2};
                           VARDTYPE_NDECL(dtp); VARIOANSI();
                           addNextNull($$, VARDONEP($$, $4, $5)); }
+        |       portDirNetE signing             portSig variable_dimensionListE sigAttrListE '=' constExpr
+                        { $$ = $3;
+                          AstNodeDType* const dtp = new AstBasicDType{$3->fileline(), LOGIC_IMPLICIT, $2};
+                          VARDTYPE_NDECL(dtp); VARIOANSI();
+                          if (AstVar* vp = VARDONEP($$, $4, $5)) { addNextNull($$, vp); vp->valuep($7); } }
         |       portDirNetE signingE rangeList  portSig variable_dimensionListE sigAttrListE
                         { $$ = $4;
                           AstNodeDType* const dtp = GRAMMARP->addRange(
                                     new AstBasicDType{$3->fileline(), LOGIC_IMPLICIT, $2}, $3, true);
                           VARDTYPE_NDECL(dtp);
                           addNextNull($$, VARDONEP($$, $5, $6)); }
+        |       portDirNetE signingE rangeList  portSig variable_dimensionListE sigAttrListE '=' constExpr
+                        { $$ = $4;
+                          AstNodeDType* const dtp = GRAMMARP->addRange(
+                                    new AstBasicDType{$3->fileline(), LOGIC_IMPLICIT, $2}, $3, true);
+                          VARDTYPE_NDECL(dtp);
+                          if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
         |       portDirNetE /*implicit*/        portSig variable_dimensionListE sigAttrListE
                         { $$ = $2; /*VARDTYPE-same*/ addNextNull($$, VARDONEP($$, $3, $4)); }
-        //
-        |       portDirNetE data_type           portSig variable_dimensionListE sigAttrListE '=' constExpr
-                        { $$ = $3; VARDTYPE($2); VARIOANSI();
-                          if (AstVar* vp = VARDONEP($$, $4, $5)) { addNextNull($$, vp); vp->valuep($7); } }
-        |       portDirNetE yVAR data_type      portSig variable_dimensionListE sigAttrListE '=' constExpr
-                        { $$ = $4; VARDTYPE($3); VARIOANSI();
-                          if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
-        |       portDirNetE yVAR implicit_typeE portSig variable_dimensionListE sigAttrListE '=' constExpr
-                        { $$ = $4; VARDTYPE($3); VARIOANSI();
-                          if (AstVar* vp = VARDONEP($$, $5, $6)) { addNextNull($$, vp); vp->valuep($8); } }
         |       portDirNetE /*implicit*/        portSig variable_dimensionListE sigAttrListE '=' constExpr
                         { $$ = $2; /*VARDTYPE-same*/
                           if (AstVar* vp = VARDONEP($$, $3, $4)) { addNextNull($$, vp); vp->valuep($6); } }
@@ -2717,17 +2730,23 @@ non_port_module_item<nodep>:    // ==IEEE: non_port_module_item
                         { $$ = nullptr; BBUNSUP(CRELINE(), "Unsupported: interface decls within module decls"); }
         |       timeunits_declaration                   { $$ = $1; }
         //                      // Verilator specific
-        |       yaSCHDR                                 { $$ = new AstScHdr{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
-        |       yaSCINT                                 { $$ = new AstScInt{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
-        |       yaSCIMP                                 { $$ = new AstScImp{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
-        |       yaSCIMPH                                { $$ = new AstScImpHdr{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
-        |       yaSCCTOR                                { $$ = new AstScCtor{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
-        |       yaSCDTOR                                { $$ = new AstScDtor{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       vlScBlock                               { $$ = $1; }
         |       yVL_HIER_BLOCK                          { $$ = new AstPragma{$1, VPragmaType::HIER_BLOCK}; }
         |       yVL_INLINE_MODULE                       { $$ = new AstPragma{$1, VPragmaType::INLINE_MODULE}; }
         |       yVL_NO_INLINE_MODULE                    { $$ = new AstPragma{$1, VPragmaType::NO_INLINE_MODULE}; }
         |       yVL_PUBLIC_MODULE                       { $$ = new AstPragma{$1, VPragmaType::PUBLIC_MODULE}; v3Global.dpi(true); }
         ;
+
+vlScBlock<nodep>:  // Verilator-specific `systemc_* blocks
+                yaSCHDR                                 { $$ = new AstScHdr{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       yaSCHDRP                                { $$ = new AstScHdrPost{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       yaSCINT                                 { $$ = new AstScInt{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       yaSCIMP                                 { $$ = new AstScImp{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       yaSCIMPH                                { $$ = new AstScImpHdr{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       yaSCCTOR                                { $$ = new AstScCtor{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        |       yaSCDTOR                                { $$ = new AstScDtor{$<fl>1, *$1}; v3Global.setHasSCTextSections(); }
+        ;
+
 
 module_or_generate_item<nodep>: // ==IEEE: module_or_generate_item
         //                      // IEEE: parameter_override
@@ -6067,7 +6086,7 @@ clocking_skewE<nodeExprp>:          // IEEE: [clocking_skew]
 
 clocking_skew<nodeExprp>:           // IEEE: clocking_skew
                 delay_control                           { $$ = $1->lhsp()->unlinkFrBack(); $1->deleteTree(); }
-        |      '#' ya1STEP                              { $$ = new AstConst{$<fl>1, AstConst::OneStep{}}; }
+        |      '#' y1STEP                               { $$ = new AstConst{$<fl>1, AstConst::OneStep{}}; }
         |      yPOSEDGE delay_controlE                  { $$ = nullptr;
                                                           BBUNSUP($1, "Unsupported: clocking event edge override"); }
         |      yNEGEDGE delay_controlE                  { $$ = nullptr;
@@ -7150,7 +7169,6 @@ class_declaration<nodep>:       // ==IEEE: part of class_declaration
                         }
         /*cont*/    class_itemListEnd endLabelE
                         { $$ = $1; $1->addMembersp($2);
-                          if ($2) $1->isParameterized(true);
                           $1->addExtendsp($3);
                           $1->addExtendsp($4);
                           $1->addMembersp($7);
@@ -7361,6 +7379,8 @@ class_item<nodep>:                      // ==IEEE: class_item
         //                      // local_parameter_declaration under parameter_declaration
         |       parameter_declaration ';'               { $$ = $1; }
         |       ';'                                     { $$ = nullptr; }
+        //                      // Verilator specific
+        |       vlScBlock                               { $$ = $1; }
         //
         |       error ';'                               { $$ = nullptr; }
         ;
@@ -7651,6 +7671,10 @@ vltItem:
                         { V3Config::addModulePragma(*$2, VPragmaType::HIER_BLOCK); }
         |       yVLT_HIER_PARAMS vltDModuleE
                         { V3Config::addModulePragma(*$2, VPragmaType::HIER_PARAMS); }
+        |       yVLT_HIER_WORKERS vltDModuleE vltDWorkers
+                        { V3Config::addHierWorkers($<fl>1, *$2, $3->toSInt()); }
+        |       yVLT_HIER_WORKERS vltDHierDpi vltDWorkers
+                        { V3Config::addHierWorkers($<fl>1, *$2, $3->toSInt()); }
         |       yVLT_PARALLEL_CASE vltDFile
                         { V3Config::addCaseParallel(*$2, 0); }
         |       yVLT_PARALLEL_CASE vltDFile yVLT_D_LINES yaINTNUM
@@ -7738,6 +7762,10 @@ vltDFTaskE<strp>:
                 /* empty */                             { static string empty; $$ = &empty; }
         |       yVLT_D_FUNCTION str                     { $$ = $2; }
         |       yVLT_D_TASK str                         { $$ = $2; }
+        ;
+
+vltDWorkers<nump>:  // --workers <arg>
+                yVLT_D_WORKERS yaINTNUM                  { $$ = $2; }
         ;
 
 vltInlineFront<cbool>:

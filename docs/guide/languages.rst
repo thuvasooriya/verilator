@@ -396,8 +396,8 @@ This section describes specific limitations for each language keyword.
    \`begin_keywords, \`begin_keywords, \`begin_keywords, \`begin_keywords,
    \`define, \`else, \`elsif, \`end_keywords, \`endif, \`error, \`ifdef,
    \`ifndef, \`include, \`line, \`systemc_ctor, \`systemc_dtor,
-   \`systemc_header, \`systemc_imp_header, \`systemc_implementation,
-   \`systemc_interface, \`undef, \`verilog
+   \`systemc_header, \`systemc_header_post, \`systemc_imp_header,
+   \`systemc_implementation, \`systemc_interface, \`undef, \`verilog
 
 |cmdslong1|
   Fully supported.
@@ -451,17 +451,17 @@ disable
 force, release
   Verilator supports the procedural `force` (and corresponding `release`)
   statement. However, the behavior of the `force` statement does not
-  entirely comply with IEEE 1800. According to the standard, when a
-  procedural statement of the form `force a = b;` is executed, the
-  simulation should behave as if, from that point forwards, a continuous
-  assignment `assign a = b;` has been added to override the drivers of `a`.
-  More specifically: the value of `a` should be updated whenever the value
-  of `b` changes, until a `release a;` statement is executed.  Verilator
-  instead evaluates the current value of `b` when the `force` statement is
-  executed, and forces `a` to that value, without updating it until a new
-  `force` or `release` statement is encountered that applies to `a`. This
-  non-standard behavior is nevertheless consistent with some other
-  simulators.
+  entirely comply with IEEE 1800-2023:
+
+  #. Using forced variable as a value to another force statement is
+     currently not supported. The dependent force statement is forced by an
+     initial constant value.
+
+  #. Force/release with procedural continuous assignment is not supported.
+     The assignment is treated as procedural.
+
+  #. Expressions using multiple variable references or function calls on
+     forced right-hand side are not sensitive to dependency changes.
 
 inside
   Inside expressions may not include unpacked array traversal or $ as an

@@ -327,6 +327,15 @@ AstNodeExpr* AstInsideRange::newAndFromInside(AstNodeExpr* exprp, AstNodeExpr* l
     return new AstLogAnd{fileline(), ap, bp};
 }
 
+void AstCReset::dump(std::ostream& str) const {
+    this->AstNode::dump(str);
+    if (constructing()) str << " [CONS]";
+}
+void AstCReset::dumpJson(std::ostream& str) const {
+    dumpJsonBoolFunc(str, constructing);
+    dumpJsonGen(str);
+}
+
 AstVar* AstClocking::ensureEventp(bool childDType) {
     if (!eventp()) {
         AstVar* const evp
@@ -815,12 +824,12 @@ AstVar* AstVar::scVarRecurse(AstNode* nodep) {
         }
     } else if (AstArraySel* const arraySelp = VN_CAST(nodep, ArraySel)) {
         if (AstVar* const p = scVarRecurse(arraySelp->fromp())) return p;
-        if (AstVar* const p = scVarRecurse(arraySelp->bitp())) return p;
     }
     return nullptr;
 }
 
-const AstNodeDType* AstNodeDType::skipRefIterp(bool skipConst, bool skipEnum) const VL_MT_STABLE {
+const AstNodeDType* AstNodeDType::skipRefIterp(bool skipConst, bool skipEnum,
+                                               bool assertOn) const VL_MT_STABLE {
     const AstNodeDType* nodep = this;
     while (true) {
         if (VL_UNLIKELY(VN_IS(nodep, MemberDType) || VN_IS(nodep, ParamTypeDType)
@@ -831,7 +840,7 @@ const AstNodeDType* AstNodeDType::skipRefIterp(bool skipConst, bool skipEnum) co
                 nodep = subp;
                 continue;
             } else {
-                nodep->v3fatalSrc(nodep->prettyTypeName() << " not linked to type");
+                if (assertOn) nodep->v3fatalSrc(nodep->prettyTypeName() << " not linked to type");
                 return nullptr;
             }
         }
@@ -1787,7 +1796,7 @@ void AstClocking::dumpJson(std::ostream& str) const {
 }
 void AstDisplay::dump(std::ostream& str) const {
     this->AstNodeStmt::dump(str);
-    // str << " " << displayType().ascii();
+    str << " [" << displayType().ascii() << "]";
 }
 void AstDisplay::dumpJson(std::ostream& str) const { dumpJsonGen(str); }
 void AstEnumDType::dump(std::ostream& str) const {
@@ -1986,8 +1995,8 @@ AstMemberSel::AstMemberSel(FileLine* fl, AstNodeExpr* fromp, AstVar* varp)
 }
 bool AstMemberSel::sameNode(const AstNode* samep) const {
     const AstMemberSel* const sp = VN_DBG_AS(samep, MemberSel);
-    return sp != nullptr && access() == sp->access() && fromp()->isSame(sp->fromp())
-           && name() == sp->name() && varp()->sameNode(sp->varp());
+    return sp && access() == sp->access() && fromp()->isSame(sp->fromp()) && name() == sp->name()
+           && (varp() && sp->varp() && varp()->sameNode(sp->varp()));
 }
 
 void AstMemberSel::dump(std::ostream& str) const {
@@ -2474,6 +2483,21 @@ void AstNodeVarRef::dumpJson(std::ostream& str) const {
     dumpJsonStr(str, "access", access().ascii());
     dumpJsonGen(str);
 }
+AstNodeVarRef* AstNodeVarRef::varRefLValueRecurse(AstNode* nodep) {
+    // Given a (possible) lvalue expression, recurse to find the being-set NodeVarRef, else nullptr
+    if (AstNodeVarRef* const anodep = VN_CAST(nodep, NodeVarRef)) return anodep;
+    if (AstNodeSel* const anodep = VN_CAST(nodep, NodeSel))
+        return varRefLValueRecurse(anodep->fromp());
+    if (AstSel* const anodep = VN_CAST(nodep, Sel)) return varRefLValueRecurse(anodep->fromp());
+    if (AstArraySel* const anodep = VN_CAST(nodep, ArraySel))
+        return varRefLValueRecurse(anodep->fromp());
+    if (AstMemberSel* const anodep = VN_CAST(nodep, MemberSel))
+        return varRefLValueRecurse(anodep->fromp());
+    if (AstStructSel* const anodep = VN_CAST(nodep, StructSel))
+        return varRefLValueRecurse(anodep->fromp());
+    return nullptr;
+}
+
 void AstVarXRef::dump(std::ostream& str) const {
     this->AstNodeVarRef::dump(str);
     str << ".=" << dotted() << " ";
@@ -2538,6 +2562,8 @@ void AstVar::dump(std::ostream& str) const {
         str << " [FUNC]";
     }
     if (isDpiOpenArray()) str << " [DPIOPENA]";
+    if (ignorePostWrite()) str << " [IGNPWR]";
+    if (ignoreSchedWrite()) str << " [IGNWR]";
     if (!attrClocker().unknown()) str << " [" << attrClocker().ascii() << "] ";
     if (!lifetime().isNone()) str << " [" << lifetime().ascii() << "] ";
     str << " " << varType();
@@ -2570,6 +2596,8 @@ void AstVar::dumpJson(std::ostream& str) const {
     dumpJsonBoolFunc(str, isParam);
     dumpJsonBoolFunc(str, attrScBv);
     dumpJsonBoolFunc(str, attrSFormat);
+    dumpJsonBoolFunc(str, ignorePostWrite);
+    dumpJsonBoolFunc(str, ignoreSchedWrite);
     dumpJsonGen(str);
 }
 bool AstVar::sameNode(const AstNode* samep) const {
@@ -2656,7 +2684,9 @@ AstNodeModule* AstClassOrPackageRef::classOrPackageSkipp() const {
     AstNode* lastp = nullptr;
     while (foundp != lastp) {
         lastp = foundp;
-        if (AstNodeDType* const anodep = VN_CAST(foundp, NodeDType)) foundp = anodep->skipRefp();
+        if (AstNodeDType* const anodep = VN_CAST(foundp, NodeDType)) {
+            foundp = anodep->skipRefOrNullp();
+        }
         if (AstTypedef* const anodep = VN_CAST(foundp, Typedef)) foundp = anodep->subDTypep();
         if (AstClassRefDType* const anodep = VN_CAST(foundp, ClassRefDType))
             foundp = anodep->classp();
@@ -2988,7 +3018,8 @@ void AstCMethodHard::setPurity() {
                                                           {"resume", false},
                                                           {"reverse", false},
                                                           {"rsort", false},
-                                                          {"set", false},
+                                                          {"setBit", false},
+                                                          {"setWord", false},
                                                           {"set_randmode", false},
                                                           {"shuffle", false},
                                                           {"size", true},
@@ -3055,7 +3086,7 @@ AstAlways* AstAssignW::convertToAlways() {
     if (hasTimingControl) {
         // If there's a timing control, put the assignment in a fork..join_none. This process won't
         // get marked as suspendable and thus will be scheduled normally
-        auto* forkp = new AstFork{flp, "", bodysp};
+        AstFork* forkp = new AstFork{flp, "", bodysp};
         forkp->joinType(VJoinType::JOIN_NONE);
         bodysp = forkp;
     }

@@ -50,7 +50,7 @@ private:
         const int m_dbgId;  // Work list ID for debugging.
 
         WorkList() = delete;
-        WorkList(int id)
+        explicit WorkList(int id)
             : m_dbgId{id} {}
     };
 
@@ -408,7 +408,7 @@ private:
             const string filename = v3Global.debugFilename("outputgroup") + ".txt";
             UINFO(5, "Dumping " << filename << endl);
             m_logp = std::unique_ptr<std::ofstream>{V3File::new_ofstream(filename)};
-            if (m_logp->fail()) v3fatal("Can't write " << filename);
+            if (m_logp->fail()) v3fatal("Can't write file: " << filename);
         }
 
         if (m_logp) dumpLogScoreHistogram(*m_logp);
@@ -463,7 +463,7 @@ private:
 public:
     static std::vector<FileOrConcatenatedFilesList>
     singleConcatenatedFilesList(std::vector<FilenameWithScore> inputFiles, uint64_t totalScore,
-                                std::string groupFilePrefix) {
+                                const std::string& groupFilePrefix) {
         EmitGroup group{std::move(inputFiles), totalScore, groupFilePrefix};
         group.process();
         return group.m_outputFiles;
@@ -551,7 +551,7 @@ public:
         of.puts("VM_PARALLEL_BUILDS = ");
         of.puts(v3Global.useParallelBuild() ? "1" : "0");
         of.puts("\n");
-        of.puts("# Tracing output mode?  0/1 (from --trace/--trace-fst)\n");
+        of.puts("# Tracing output mode?  0/1 (from --trace/--trace-fst/--trace-saif)\n");
         of.puts("VM_TRACE = ");
         of.puts(v3Global.opt.trace() ? "1" : "0");
         of.puts("\n");
@@ -562,6 +562,10 @@ public:
         of.puts("# Tracing output mode in FST format?  0/1 (from --trace-fst)\n");
         of.puts("VM_TRACE_FST = ");
         of.puts(v3Global.opt.trace() && v3Global.opt.traceFormat().fst() ? "1" : "0");
+        of.puts("\n");
+        of.puts("# Tracing output mode in SAIF format?  0/1 (from --trace-saif)\n");
+        of.puts("VM_TRACE_SAIF = ");
+        of.puts(v3Global.opt.trace() && v3Global.opt.traceFormat().saif() ? "1" : "0");
         of.puts("\n");
 
         of.puts("\n### Object file lists...\n");

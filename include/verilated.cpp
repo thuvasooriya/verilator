@@ -56,6 +56,7 @@
 #include <cctype>
 #include <cerrno>
 #include <cstdlib>
+#include <iostream>
 #include <limits>
 #include <list>
 #include <sstream>
@@ -916,6 +917,21 @@ void _vl_vsformat(std::string& output, const std::string& format, va_list ap) VL
                 }
                 break;
             }
+            case 'p': {  // 'x' but parameter is string
+                const int lbits = va_arg(ap, int);
+                (void)lbits;
+                const std::string* const cstr = va_arg(ap, const std::string*);
+                std::ostringstream oss;
+                for (unsigned char c : *cstr) oss << std::hex << static_cast<int>(c);
+                std::string hex_str = oss.str();
+                if (width > 0 && widthSet) {
+                    hex_str = hex_str.size() > width
+                                  ? hex_str.substr(0, width)
+                                  : std::string(width - hex_str.size(), '0') + hex_str;
+                    output += hex_str;
+                }
+                break;
+            }
             default: {
                 // Deal with all read-and-print somethings
                 const int lbits = va_arg(ap, int);
@@ -1234,9 +1250,9 @@ IData _vl_vsscanf(FILE* fp,  // If a fscanf
     bool inPct = false;
     bool inIgnore = false;
     std::string::const_iterator pos = format.cbegin();
-    for (; pos != format.cend() && !_vl_vsss_eof(fp, floc); ++pos) {
-        // VL_DBG_MSGF("_vlscan fmt='"<<pos[0]<<"' floc="<<floc<<" file='"<<_vl_vsss_peek(fp, floc,
-        // fromp, fstr)<<"'\n");
+    for (; pos != format.cend(); ++pos) {
+        // VL_DBG_MSGF("_vlscan fmt='%c' floc=%d file='%c'\n", pos[0], floc,
+        // _vl_vsss_peek(fp, floc, fromp, fstr));
         if (!inPct && pos[0] == '%') {
             inPct = true;
             inIgnore = false;
@@ -1420,7 +1436,12 @@ IData _vl_vsscanf(FILE* fp,  // If a fscanf
             }  // switch
         }
     }
+    // Processed all arguments
+    return got;
+
 done:
+    // Scan stopped early, return parsed or EOF
+    if (_vl_vsss_eof(fp, floc)) return -1;
     return got;
 }
 

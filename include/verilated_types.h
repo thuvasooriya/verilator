@@ -184,8 +184,11 @@ public:
     // Word at given 'wordIndex'
     uint64_t word(size_t wordIndex) const { return m_flags[wordIndex]; }
 
-    // Set specified flag to given value
-    void set(size_t index, bool value) {
+    // Set specified word to given value
+    void setWord(size_t wordIndex, uint64_t value) { m_flags[wordIndex] = value; }
+
+    // Set specified bit to given value
+    void setBit(size_t index, bool value) {
         uint64_t& w = m_flags[index / 64];
         const size_t bitIndex = index % 64;
         w &= ~(1ULL << bitIndex);
@@ -618,11 +621,13 @@ public:
     T_Value& atWriteAppend(int32_t index) {
         // cppcheck-suppress variableScope
         static thread_local T_Value t_throwAway;
-        if (VL_UNLIKELY(index < 0 || index > m_deque.size())) {
+        if (VL_UNLIKELY(index < 0 || index >= m_deque.size())) {
+            if (index == m_deque.size()) {
+                push_back(atDefault());
+                return m_deque[index];
+            }
             t_throwAway = atDefault();
             return t_throwAway;
-        } else if (VL_UNLIKELY(index == m_deque.size())) {
-            push_back(atDefault());
         }
         return m_deque[index];
     }
@@ -954,7 +959,7 @@ public:
     VlAssocArray& operator=(VlAssocArray&&) = default;
     bool operator==(const VlAssocArray& rhs) const { return m_map == rhs.m_map; }
     bool operator!=(const VlAssocArray& rhs) const { return m_map != rhs.m_map; }
-
+    bool operator<(const VlAssocArray& rhs) const { return m_map < rhs.m_map; }
     // METHODS
     T_Value& atDefault() { return m_defaultValue; }
     const T_Value& atDefault() const { return m_defaultValue; }

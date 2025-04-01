@@ -23,6 +23,8 @@ import time
 from functools import lru_cache  # Eventually use python 3.9's cache
 from pprint import pformat, pprint
 
+import distro
+
 if False:  # pylint: disable=using-constant-test
     pprint(pformat("Ignored"))  # Prevent unused warning
 
@@ -50,6 +52,7 @@ Quitting = False
 Vltmt_Threads = 3
 forker = None
 Start = None
+nodist_directory = "../nodist"
 
 # So an 'import vltest_bootstrap' inside test files will do nothing
 sys.modules['vltest_bootstrap'] = {}
@@ -140,10 +143,10 @@ class Capabilities:
     @staticproperty
     def cxx_version() -> str:  # pylint: disable=no-method-argument
         if Capabilities._cached_cxx_version is None:
-            Capabilities._cached_cxx_version = VtOs.run_capture(os.environ['MAKE'] + " -C " +
-                                                                os.environ['TEST_REGRESS'] +
-                                                                " -f Makefile print-cxx-version",
-                                                                check=False)
+            Capabilities._cached_cxx_version = VtOs.run_capture(
+                os.environ['MAKE'] + " --silent -C " + os.environ['TEST_REGRESS'] +
+                " -f Makefile print-cxx-version",
+                check=False)
 
         return Capabilities._cached_cxx_version
 
@@ -439,6 +442,8 @@ class Runner:
         test._read_status()
         if test.ok:
             self.ok_cnt += 1
+            if Args.driver_clean:
+                test.clean()
         elif test._quit:
             pass
         elif test._scenario_off and not test.errors:
@@ -449,7 +454,7 @@ class Runner:
         else:
             error_msg = test.errors if test.errors else test.errors_keep_going
             test.oprint("FAILED: " + error_msg)
-            makecmd = VtOs.getenv_def('VERILATOR_MAKE', os.environ['MAKE'] + "&&")
+            makecmd = VtOs.getenv_def('VERILATOR_MAKE', os.environ['MAKE'] + " &&")
             upperdir = 'test_regress/' if re.search(r'test_regress', os.getcwd()) else ''
             self.fail_msgs.append("\t#" + test.soprint("%Error: " + error_msg) + "\t\t" + makecmd +
                                   " " + upperdir + test.py_filename + ' ' +
@@ -552,7 +557,7 @@ class Runner:
             out += "  Skipped " + str(self.skip_cnt)
         if forker.num_running():
             out += "  Running " + str(forker.num_running())
-        if self.left_cnt > 10 and eta > 10:
+        if self.left_cnt > 10 and eta > 10 and self.all_cnt != self.left_cnt:
             out += "  Eta %d:%02d" % (int(eta / 60), eta % 60)
         out += "  Time %d:%02d" % (int(delta / 60), delta % 60)
         return out
@@ -948,14 +953,17 @@ class VlTest:
     #----------------------------------------------------------------------
     # Methods invoked by tests
 
-    def clean(self) -> None:
-        """Called on a rerun to cleanup files."""
+    def clean(self, for_rerun=False) -> None:
+        """Called on a --driver-clean or rerun to cleanup files."""
         if self.clean_command:
             os.system(self.clean_command)
-        # Prevents false-failures when switching compilers
-        # Remove old results to force hard rebuild
         os.system('/bin/rm -rf ' + self.obj_dir + '__fail1')
-        os.system('/bin/mv ' + self.obj_dir + ' ' + self.obj_dir + '__fail1')
+        if for_rerun:
+            # Prevents false-failures when switching compilers
+            # Remove old results to force hard rebuild
+            os.system('/bin/mv ' + self.obj_dir + ' ' + self.obj_dir + '__fail1')
+        else:
+            os.system('/bin/rm -rf ' + self.obj_dir)
 
     def clean_objs(self) -> None:
         os.system("/bin/rm -rf " + ' '.join(glob.glob(self.obj_dir + "/*")))
@@ -1007,6 +1015,11 @@ class VlTest:
                 self.trace_format = 'fst-sc'  # pylint: disable=attribute-defined-outside-init
             else:
                 self.trace_format = 'fst-c'  # pylint: disable=attribute-defined-outside-init
+        elif re.search(r'-trace-saif', checkflags):
+            if self.sc:
+                self.trace_format = 'saif-sc'  # pylint: disable=attribute-defined-outside-init
+            else:
+                self.trace_format = 'saif-c'  # pylint: disable=attribute-defined-outside-init
         elif self.sc:
             self.trace_format = 'vcd-sc'  # pylint: disable=attribute-defined-outside-init
         else:
@@ -1236,6 +1249,13 @@ class VlTest:
 
             if self.timing and not self.have_coroutines:
                 self.skip("Test requires Coroutines; ignore error since not available\n")
+                return
+
+            if self.timing and self.sc and re.search(r'Ubuntu 24.04', distro.name(
+                    pretty=True)) and re.search(r'clang', self.cxx_version):
+                self.skip(
+                    "Test requires SystemC and Coroutines; broken on Ubuntu 24.04 w/clang\n" +
+                    " OS=" + distro.name(pretty=True) + " CXX=" + self.cxx_version)
                 return
 
             if param['verilator_make_cmake'] and not self.have_cmake:
@@ -1554,6 +1574,8 @@ class VlTest:
     def trace_filename(self) -> str:
         if re.match(r'^fst', self.trace_format):
             return self.obj_dir + "/simx.fst"
+        if re.match(r'^saif', self.trace_format):
+            return self.obj_dir + "/simx.saif"
         return self.obj_dir + "/simx.vcd"
 
     def skip_if_too_few_cores(self) -> None:
@@ -1856,6 +1878,10 @@ class VlTest:
                 fh.write("#include \"verilated_vcd_c.h\"\n")
             if self.trace and self.trace_format == 'vcd-sc':
                 fh.write("#include \"verilated_vcd_sc.h\"\n")
+            if self.trace and self.trace_format == 'saif-c':
+                fh.write("#include \"verilated_saif_c.h\"\n")
+            if self.trace and self.trace_format == 'saif-sc':
+                fh.write("#include \"verilated_saif_sc.h\"\n")
             if self.savable:
                 fh.write("#include \"verilated_save.h\"\n")
 
@@ -1939,6 +1965,10 @@ class VlTest:
                     fh.write("    std::unique_ptr<VerilatedVcdC> tfp{new VerilatedVcdC};\n")
                 if self.trace_format == 'vcd-sc':
                     fh.write("    std::unique_ptr<VerilatedVcdSc> tfp{new VerilatedVcdSc};\n")
+                if self.trace_format == 'saif-c':
+                    fh.write("    std::unique_ptr<VerilatedSaifC> tfp{new VerilatedSaifC};\n")
+                if self.trace_format == 'saif-sc':
+                    fh.write("    std::unique_ptr<VerilatedSaifSc> tfp{new VerilatedSaifSc};\n")
                 if self.sc:
                     fh.write("    sc_core::sc_start(sc_core::SC_ZERO_TIME);" +
                              "  // Finish elaboration before trace and open\n")
@@ -2344,6 +2374,16 @@ class VlTest:
         self.fst2vcd(fn1, tmp)
         self.vcd_identical(tmp, fn2)
 
+    def saif_identical(self, fn1: str, fn2: str) -> None:
+        """Test if two SAIF files have logically-identical contents"""
+
+        cmd = nodist_directory + '/verilator_saif_diff --first "' + fn1 + '" --second "' + fn2 + '"'
+        print("\t " + cmd + "\n")
+        out = test.run_capture(cmd, check=True)
+        if out != '':
+            print(out)
+            self.error("SAIF files don't match!")
+
     def _vcd_read(self, filename: str) -> str:
         data = {}
         with open(filename, 'r', encoding='latin-1') as fh:
@@ -2680,7 +2720,7 @@ def run_them() -> None:
         for ftest in orig_runner.fail_tests:
             # Reschedule test
             if ftest.rerunnable:
-                ftest.clean()
+                ftest.clean(for_rerun=True)
             runner.one_test(py_filename=ftest.py_filename,
                             scenario=ftest.scenario,
                             rerun_skipping=not ftest.rerunnable)
@@ -2741,6 +2781,7 @@ if __name__ == '__main__':
     parser.add_argument('--benchmark', action='store', help='enable benchmarking')
     parser.add_argument('--debug', action='store_const', const=9, help='enable debug')
     # --debugi: see _parameter()
+    parser.add_argument('--driver-clean', action='store_true', help='clean after test passes')
     parser.add_argument('--fail-max',
                         action='store',
                         default=None,

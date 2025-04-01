@@ -634,6 +634,7 @@ class EmitVBaseVisitorConst VL_NOT_FINAL : public EmitCBaseVisitorConst {
         iterateAndNextConstNull(nodep->fromp());
         puts(cvtToStr(nodep->declRange()));
     }
+    void visit(AstThisRef* nodep) override { puts("this"); }
     void visit(AstTypedef* nodep) override {
         putfs(nodep, "typedef ");
         iterateConstNull(nodep->subDTypep());
@@ -726,12 +727,49 @@ class EmitVBaseVisitorConst VL_NOT_FINAL : public EmitCBaseVisitorConst {
             iterateConst(nodep->subDTypep());  // For post's key
         }
     }
+    void visit(AstIfaceRefDType* nodep) override {
+        if (m_arrayPost) {
+            puts(" (");
+            if (nodep->cellp()) {
+                iterateConst(nodep->cellp());
+            } else {
+                puts("????");
+            }
+            puts(")");
+            return;
+        }
+        puts(nodep->ifaceName());
+    }
     void visit(AstRefDType* nodep) override {
         if (nodep->subDTypep()) {
             iterateConst(nodep->skipRefp());
         } else {
             puts("\n???? // "s + nodep->prettyTypeName() + " -> UNLINKED\n");
         }
+    }
+    void visit(AstModport* nodep) override {
+        puts(nodep->verilogKwd());
+        puts(" ");
+        puts(nodep->prettyName());
+        puts(" (\n");
+        if (nodep->varsp()) {
+            iterateConst(nodep->varsp());
+        } else {
+            puts("????");
+        }
+        puts(");\n");
+    }
+    void visit(AstModportVarRef* nodep) override {
+        puts(nodep->direction().verilogKwd());
+        puts(" ");
+        if (nodep->varp()) {
+            VL_RESTORER(m_suppressVarSemi);
+            m_suppressVarSemi = true;
+            iterateConst(nodep->varp());
+        } else {
+            puts(nodep->prettyName());
+        }
+        if (nodep->nextp()) puts(", ");
     }
     void visit(AstNodeUOrStructDType* nodep) override {
         if (m_arrayPost) return;
@@ -815,7 +853,7 @@ class EmitVBaseVisitorConst VL_NOT_FINAL : public EmitCBaseVisitorConst {
         }
     }
     void visit(AstVarXRef* nodep) override {
-        putfs(nodep, nodep->dotted());
+        putfs(nodep, nodep->prettyName(nodep->dotted()));
         puts(".");
         if (nodep->varp()) {
             puts(nodep->varp()->prettyName());
