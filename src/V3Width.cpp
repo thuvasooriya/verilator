@@ -239,6 +239,13 @@ class WidthVisitor final : public VNVisitor {
         EXTEND_OFF  // No extension
     };
 
+    int widthUnpacked(const AstNodeDType* const dtypep) {
+        if (const AstUnpackArrayDType* const arrDtypep = VN_CAST(dtypep, UnpackArrayDType)) {
+            return arrDtypep->subDTypep()->width() * arrDtypep->arrayUnpackedElements();
+        }
+        return dtypep->width();
+    }
+
     static void packIfUnpacked(AstNodeExpr* const nodep) {
         if (AstUnpackArrayDType* const unpackDTypep = VN_CAST(nodep->dtypep(), UnpackArrayDType)) {
             const int elementsNum = unpackDTypep->arrayUnpackedElements();
@@ -1377,6 +1384,46 @@ class WidthVisitor final : public VNVisitor {
         }
     }
 
+    void visit(AstSetuphold* nodep) override {
+        FileLine* const flp = nodep->fileline();
+        AstAssignW* newp = nullptr;
+        if (nodep->delrefp()) {
+            newp = convertSetupholdToAssign(flp, nodep->refevp(), nodep->delrefp());
+        }
+        if (nodep->deldatap()) {
+            if (!newp) {
+                newp = convertSetupholdToAssign(flp, nodep->dataevp(), nodep->deldatap());
+            } else {
+                newp->addNextHere(
+                    convertSetupholdToAssign(flp, nodep->dataevp(), nodep->deldatap()));
+            }
+        }
+        if (!newp) {
+            pushDeletep(nodep->unlinkFrBack());
+            return;
+        }
+        nodep->replaceWith(newp);
+    }
+
+    AstAssignW* convertSetupholdToAssign(FileLine* const flp, AstNodeExpr* const evp,
+                                         AstNodeExpr* const delp) {
+        AstNodeExpr* const lhsp = delp->cloneTreePure(false);
+        AstNodeExpr* const rhsp = evp->cloneTreePure(false);
+        UASSERT_OBJ(VN_IS(lhsp, NodeVarRef) || VN_IS(lhsp, NodePreSel), lhsp,
+                    "Incorrect reference in a timing check");
+        if (AstNodeVarRef* varRefp = VN_CAST(lhsp, NodeVarRef)) {
+            if (varRefp->varp()->direction() == VDirection::INPUT) { return nullptr; }
+            varRefp->access(VAccess::WRITE);
+        }
+        if (AstNodePreSel* selp = VN_CAST(lhsp, NodePreSel)) {
+            if (AstNodeVarRef* varRefp = VN_CAST(selp->fromp(), NodeVarRef)) {
+                if (varRefp->varp()->direction() == VDirection::INPUT) { return nullptr; }
+                varRefp->access(VAccess::WRITE);
+            }
+        }
+        return new AstAssignW{flp, lhsp, rhsp};
+    }
+
     void visit(AstStable* nodep) override {
         if (m_vup->prelim()) {
             iterateCheckSizedSelf(nodep, "LHS", nodep->exprp(), SELF, BOTH);
@@ -1544,6 +1591,24 @@ class WidthVisitor final : public VNVisitor {
         if (nodep->didWidthAndSet()) return;
         // Opaque returns, so arbitrary
         userIterateAndNext(nodep->lhsp(), WidthVP{SELF, BOTH}.p());
+        // Type set in constructor
+    }
+    void visit(AstCvtPackedToArray* nodep) override {
+        if (nodep->didWidthAndSet()) return;
+        // Opaque returns, so arbitrary
+        userIterateAndNext(nodep->fromp(), WidthVP{SELF, BOTH}.p());
+        // Type set in constructor
+    }
+    void visit(AstCvtArrayToPacked* nodep) override {
+        if (nodep->didWidthAndSet()) return;
+        // Opaque returns, so arbitrary
+        userIterateAndNext(nodep->fromp(), WidthVP{SELF, BOTH}.p());
+        // Type set in constructor
+    }
+    void visit(AstCvtUnpackedToQueue* nodep) override {
+        if (nodep->didWidthAndSet()) return;
+        // Opaque returns, so arbitrary
+        userIterateAndNext(nodep->fromp(), WidthVP{SELF, BOTH}.p());
         // Type set in constructor
     }
     void visit(AstTimeImport* nodep) override {
@@ -2823,10 +2888,14 @@ class WidthVisitor final : public VNVisitor {
                 pushDeletep(itemp->valuep()->unlinkFrBack());
             }
         }
+        const bool isHardPackedUnion
+            = nodep->packed() && VN_IS(nodep, UnionDType) && !VN_CAST(nodep, UnionDType)->isSoft();
+
         // Determine bit assignments and width
         if (VN_IS(nodep, UnionDType) || nodep->packed()) {
             int lsb = 0;
             int width = 0;
+            bool first = true;
             // Report errors on first member first
             AstMemberDType* itemp;
             // MSB is first, so loop backwards
@@ -2836,11 +2905,17 @@ class WidthVisitor final : public VNVisitor {
                 if (itemp->isFourstate()) nodep->isFourstate(true);
                 itemp->lsb(lsb);
                 if (VN_IS(nodep, UnionDType)) {
-                    width = std::max(width, itemp->width());
+                    const int itemWidth = itemp->width();
+                    if (!first && isHardPackedUnion && itemWidth != width) {
+                        itemp->v3error("Hard packed union members must have equal size "
+                                       "(IEEE 1800-2023 7.3.1)");
+                    }
+                    width = std::max(width, itemWidth);
                 } else {
                     lsb += itemp->width();
                     width += itemp->width();
                 }
+                first = false;
             }
             nodep->widthForce(width, width);  // Signing stays as-is, as parsed from declaration
         } else {
@@ -4328,7 +4403,7 @@ class WidthVisitor final : public VNVisitor {
         userIterateChildren(nodep, WidthVP{SELF, BOTH}.p());
         if (!similarDTypeRecurse(nodep->dtypep(), nodep->rhsp()->dtypep())) {
             nodep->rhsp()->v3error("New-as-copier passed different data type '"
-                                   << nodep->dtypep()->prettyTypeName() << "' then expected '"
+                                   << nodep->dtypep()->prettyTypeName() << "' than expected '"
                                    << nodep->rhsp()->dtypep()->prettyTypeName() << "'");
         }
     }
@@ -5140,6 +5215,43 @@ class WidthVisitor final : public VNVisitor {
             // if (debug()) nodep->dumpTree("-    assign: ");
             AstNodeDType* const lhsDTypep
                 = nodep->lhsp()->dtypep();  // Note we use rhsp for context determined
+
+            // Check width of stream and wrap if needed
+            if (AstNodeStream* const streamp = VN_CAST(nodep->rhsp(), NodeStream)) {
+                AstNodeDType* const lhsDTypeSkippedRefp = lhsDTypep->skipRefp();
+                const int lwidth = widthUnpacked(lhsDTypeSkippedRefp);
+                const int rwidth = widthUnpacked(streamp->lhsp()->dtypep()->skipRefp());
+                if (lwidth != 0 && lwidth < rwidth) {
+                    nodep->v3widthWarn(lwidth, rwidth,
+                                       "Target fixed size variable ("
+                                           << lwidth << " bits) is narrower than the stream ("
+                                           << rwidth << " bits) (IEEE 1800-2023 11.4.14)");
+                }
+                if (VN_IS(lhsDTypeSkippedRefp, NodeArrayDType)) {
+                    streamp->unlinkFrBack();
+                    nodep->rhsp(new AstCvtPackedToArray{streamp->fileline(), streamp,
+                                                        lhsDTypeSkippedRefp});
+                }
+            }
+            if (const AstNodeStream* const streamp = VN_CAST(nodep->lhsp(), NodeStream)) {
+                const AstNodeDType* const rhsDTypep = nodep->rhsp()->dtypep()->skipRefp();
+
+                const int lwidth = widthUnpacked(streamp->lhsp()->dtypep()->skipRefp());
+                const int rwidth = widthUnpacked(rhsDTypep);
+                if (rwidth != 0 && rwidth < lwidth) {
+                    nodep->v3widthWarn(lwidth, rwidth,
+                                       "Stream target requires "
+                                           << lwidth
+                                           << " bits, but source expression only provides "
+                                           << rwidth << " bits (IEEE 1800-2023 11.4.14.3)");
+                }
+                if (VN_IS(rhsDTypep, NodeArrayDType)) {
+                    AstNodeExpr* const rhsp = nodep->rhsp()->unlinkFrBack();
+                    nodep->rhsp(
+                        new AstCvtArrayToPacked{rhsp->fileline(), rhsp, streamp->dtypep()});
+                }
+            }
+
             iterateCheckAssign(nodep, "Assign RHS", nodep->rhsp(), FINAL, lhsDTypep);
             // if (debug()) nodep->dumpTree("-  AssignOut: ");
         }
@@ -5199,32 +5311,6 @@ class WidthVisitor final : public VNVisitor {
             nodep->replaceWith(newp->makeStmt());
             VL_DO_DANGLING(pushDeletep(nodep), nodep);
             return;
-        }
-
-        // Width check for unpacked array stream assignment
-        if (const AstNodeStream* streamp = VN_CAST(nodep->rhsp(), NodeStream)) {
-            if (AstUnpackArrayDType* arr = VN_CAST(streamp->lhsp()->dtypep(), UnpackArrayDType)) {
-                int lwidth = nodep->lhsp()->width();
-                int rwidth = arr->subDTypep()->width() * arr->arrayUnpackedElements();
-                if (lwidth != 0 && lwidth < rwidth) {
-                    nodep->v3widthWarn(lwidth, rwidth,
-                                       "Target fixed size variable ("
-                                           << lwidth << " bits) is narrower than the stream ("
-                                           << rwidth << " bits) (IEEE 1800-2023 11.4.14)");
-                }
-            }
-        } else if (const AstNodeStream* streamp = VN_CAST(nodep->lhsp(), NodeStream)) {
-            if (AstUnpackArrayDType* arr = VN_CAST(streamp->lhsp()->dtypep(), UnpackArrayDType)) {
-                int rwidth = nodep->rhsp()->width();
-                int lwidth = arr->subDTypep()->width() * arr->arrayUnpackedElements();
-                if (rwidth != 0 && rwidth < lwidth) {
-                    nodep->v3widthWarn(lwidth, rwidth,
-                                       "Stream target requires "
-                                           << lwidth
-                                           << " bits, but source expression only provides "
-                                           << rwidth << " bits (IEEE 1800-2023 11.4.14.3)");
-                }
-            }
         }
 
         if (nodep->hasDType() && nodep->dtypep()->isEvent()) {
@@ -5423,7 +5509,7 @@ class WidthVisitor final : public VNVisitor {
         userIterateChildren(nodep, WidthVP{SELF, BOTH}.p());
         if (!m_paramsOnly) {
             V3Const::constifyParamsEdit(nodep->fmtp());  // fmtp may change
-            string text = nodep->fmtp()->text();
+            string text = VString::dequotePercent(nodep->fmtp()->text());
             if (text.empty()) text = "Elaboration system task message (IEEE 1800-2023 20.11)";
             switch (nodep->displayType()) {
             case VDisplayType::DT_INFO: nodep->v3warn(USERINFO, text); break;
@@ -6988,6 +7074,13 @@ class WidthVisitor final : public VNVisitor {
             }
             nodep->v3error(side << " expects a " << lhsClassRefp->prettyTypeName() << ", got "
                                 << rhsDtypep->prettyTypeName());
+        }
+        if (VN_IS(lhsDTypep->skipRefp(), DynArrayDType)
+            && VN_IS(rhsp->dtypep()->skipRefp(), UnpackArrayDType)) {
+            VNRelinker relinker;
+            rhsp->unlinkFrBack(&relinker);
+            relinker.relink(
+                new AstCvtUnpackedToQueue{rhsp->fileline(), VN_AS(rhsp, NodeExpr), lhsDTypep});
         }
     }
     static bool similarDTypeRecurse(const AstNodeDType* const node1p,

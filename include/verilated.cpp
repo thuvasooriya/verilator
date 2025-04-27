@@ -3038,7 +3038,7 @@ void VerilatedContext::trace(VerilatedTraceBaseC* tfp, int levels, int options) 
     if (m_ns.m_traceBaseModelCbs.empty())
         VL_FATAL_MT("", 0, "",
                     "Testbench C call to 'VerilatedContext::trace()' requires model(s) Verilated"
-                    " with --trace or --trace-vcd option");
+                    " with --trace-fst or --trace-vcd option");
     for (auto& cbr : m_ns.m_traceBaseModelCbs) cbr(tfp, levels, options);
 }
 void VerilatedContext::traceBaseModelCbAdd(traceBaseModelCb_t cb) VL_MT_SAFE {
@@ -3476,7 +3476,7 @@ void VerilatedHierarchy::remove(VerilatedScope* fromp, VerilatedScope* top) {
 void VerilatedAssertOneThread::fatal_different() VL_MT_SAFE {
     VL_FATAL_MT(__FILE__, __LINE__, "",
                 "Routine called that is single threaded, but called from"
-                " a different thread then the expected constructing thread");
+                " a different thread than the expected constructing thread");
 }
 #endif
 

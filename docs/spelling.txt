@@ -863,6 +863,7 @@ noprivate
 noreturn
 notif
 nullptr
+numactl
 onehot
 ooo
 oprofile
@@ -1100,6 +1101,7 @@ verilogmod
 verimake
 veriuser
 vl
+vlSelf
 vlopt
 vlt
 vltstd

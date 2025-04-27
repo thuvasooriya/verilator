@@ -334,7 +334,8 @@ Gate Primitives
 
 The 2-state gate primitives (and, buf, nand, nor, not, or, xnor, xor) are
 directly converted to behavioral equivalents.  The 3-state and MOS gate
-primitives are not supported.  Tables are not supported.
+primitives are not supported.  User-defined primitive (UDP) tables are
+supported.
 
 
 Specify blocks
@@ -488,7 +489,7 @@ $bits, $countbits, $countones, $finish, $isunknown, $onehot, $onehot0, $signed, 
 
 $dump/$dumpports and related
   $dumpfile or $dumpports will create a VCD or FST file (based on
-  the :vlopt:`--trace` option given when the model was Verilated). This
+  the :vlopt:`--trace-vcd` option given when the model was Verilated). This
   will take effect starting at the next eval() call.  If you have multiple
   Verilated designs under the same C model, this will dump signals
   only from the design containing the $dumpvars.

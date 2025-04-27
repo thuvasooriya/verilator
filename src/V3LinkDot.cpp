@@ -2254,7 +2254,7 @@ class LinkDotResolveVisitor final : public VNVisitor {
                                          // (except the default instances)
                                          // They are added to the set only in linkDotPrimary.
     bool m_insideClassExtParam = false;  // Inside a class from m_extendsParam
-    bool m_explicitSuperNew = false;  // Hit a "super.new" call inside a "new" function
+    AstNew* m_explicitSuperNewp = nullptr;  // Hit a "super.new" call inside a "new" function
     std::map<AstNode*, AstPin*> m_usedPins;  // Pin used in this cell, map to duplicate
     std::map<std::string, AstNodeModule*> m_modulesToRevisit;  // Modules to revisit a second time
     AstNode* m_lastDeferredp = nullptr;  // Last node which requested a revisit of its module
@@ -2266,6 +2266,7 @@ class LinkDotResolveVisitor final : public VNVisitor {
         bool m_super;  // Starts with super reference
         bool m_unresolvedCell;  // Unresolved cell, needs help from V3Param
         bool m_unresolvedClass;  // Unresolved class reference, needs help from V3Param
+        bool m_genBlk;  // Contains gen block reference
         AstNode* m_unlinkedScopep;  // Unresolved scope, needs corresponding VarXRef
         bool m_dotErr;  // Error found in dotted resolution, ignore upwards
         string m_dotText;  // String of dotted names found in below parseref
@@ -2280,6 +2281,7 @@ class LinkDotResolveVisitor final : public VNVisitor {
             m_dotText = "";
             m_unresolvedCell = false;
             m_unresolvedClass = false;
+            m_genBlk = false;
             m_unlinkedScopep = nullptr;
         }
         string ascii() const {
@@ -2295,6 +2297,7 @@ class LinkDotResolveVisitor final : public VNVisitor {
             if (m_super) sstr << "  [super]";
             if (m_unresolvedCell) sstr << "  [unrCell]";
             if (m_unresolvedClass) sstr << "  [unrClass]";
+            if (m_genBlk) sstr << "  [genBlk]";
             sstr << "  txt=" << m_dotText;
             return sstr.str();
         }
@@ -2351,12 +2354,16 @@ class LinkDotResolveVisitor final : public VNVisitor {
             return nullptr;
         }
     }
-    AstNodeStmt* addImplicitSuperNewCall(AstFunc* nodep) {
+    AstNodeStmt* addImplicitSuperNewCall(AstFunc* const nodep,
+                                         const AstClassExtends* const classExtendsp) {
         // Returns the added node
         FileLine* const fl = nodep->fileline();
+        AstNodeExpr* pinsp = nullptr;
+        if (classExtendsp->argsp()) pinsp = classExtendsp->argsp()->cloneTree(true);
+        AstNew* const newExprp = new AstNew{fl, pinsp};
+        newExprp->isImplicit(true);
         AstDot* const superNewp
-            = new AstDot{fl, false, new AstParseRef{fl, VParseRefExp::PX_ROOT, "super"},
-                         new AstNew{fl, nullptr}};
+            = new AstDot{fl, false, new AstParseRef{fl, VParseRefExp::PX_ROOT, "super"}, newExprp};
         AstNodeStmt* const superNewStmtp = superNewp->makeStmt();
         for (AstNode* stmtp = nodep->stmtsp(); stmtp; stmtp = stmtp->nextp()) {
             // super.new shall be the first statement (IEEE 1800-2023 8.15)
@@ -3075,6 +3082,9 @@ class LinkDotResolveVisitor final : public VNVisitor {
                     m_ds.m_dotText = VString::dot(m_ds.m_dotText, ".", nodep->name());
                     m_ds.m_dotSymp = foundp;
                     m_ds.m_dotPos = DP_SCOPE;
+                    if (const AstBegin* const beginp = VN_CAST(foundp->nodep(), Begin)) {
+                        if (beginp->generate()) m_ds.m_genBlk = true;
+                    }
                     // Upper AstDot visitor will handle it from here
                 } else if (VN_IS(foundp->nodep(), Cell) && allowVar) {
                     AstCell* const cellp = VN_AS(foundp->nodep(), Cell);
@@ -3135,6 +3145,7 @@ class LinkDotResolveVisitor final : public VNVisitor {
                             = new AstVarXRef{nodep->fileline(), nodep->name(), m_ds.m_dotText,
                                              VAccess::READ};  // lvalue'ness computed later
                         refp->varp(varp);
+                        refp->containsGenBlock(m_ds.m_genBlk);
                         if (varp->attrSplitVar()) {
                             refp->v3warn(
                                 SPLITVAR,
@@ -3975,17 +3986,33 @@ class LinkDotResolveVisitor final : public VNVisitor {
         }
         VL_RESTORER(m_curSymp);
         VL_RESTORER(m_ftaskp);
+        VL_RESTORER(m_explicitSuperNewp);
         {
             m_ftaskp = nodep;
             m_ds.m_dotSymp = m_curSymp = m_statep->getNodeSym(nodep);
             const bool isNew = nodep->name() == "new";
-            if (isNew) m_explicitSuperNew = false;
+            if (isNew) m_explicitSuperNewp = nullptr;
             iterateChildren(nodep);
-            if (isNew && !m_explicitSuperNew && m_statep->forParamed()) {
+            if (isNew) {
                 const AstClassExtends* const classExtendsp = VN_AS(m_modp, Class)->extendsp();
+                if (m_explicitSuperNewp && !m_explicitSuperNewp->isImplicit()
+                    && classExtendsp->argsp()) {
+                    m_explicitSuperNewp->v3error(
+                        "Explicit super.new not allowed with class "
+                        "extends arguments (IEEE 1800-2023 8.17)\n"
+                        << m_explicitSuperNewp->warnMore() << "... Suggest remove super.new\n"
+                        << m_explicitSuperNewp->warnContextPrimary() << '\n'
+                        << classExtendsp->argsp()->warnOther()
+                        << "... Location of extends argument(s)\n"
+                        << classExtendsp->argsp()->warnContextSecondary());
+                }
                 if (classExtendsp && classExtendsp->classOrNullp()) {
-                    AstNodeStmt* const superNewp = addImplicitSuperNewCall(VN_AS(nodep, Func));
-                    iterate(superNewp);
+                    if (!m_explicitSuperNewp && m_statep->forParamed()) {
+                        AstNodeStmt* const superNewp
+                            = addImplicitSuperNewCall(VN_AS(nodep, Func), classExtendsp);
+                        UINFO(9, "created super new " << superNewp << endl);
+                        iterate(superNewp);
+                    }
                 }
             }
         }
@@ -4349,12 +4376,14 @@ class LinkDotResolveVisitor final : public VNVisitor {
         LINKDOT_VISIT_START();
         checkNoDot(nodep);
         // Check if nodep represents a super.new call;
-        if (VN_IS(nodep->exprp(), New)) {
+        if (AstNew* const newExprp = VN_CAST(nodep->exprp(), New)) {
             // in this case it was already linked, so it doesn't have a super reference
-            m_explicitSuperNew = true;
+            m_explicitSuperNewp = newExprp;
         } else if (const AstDot* const dotp = VN_CAST(nodep->exprp(), Dot)) {
-            if (dotp->lhsp()->name() == "super" && VN_IS(dotp->rhsp(), New)) {
-                m_explicitSuperNew = true;
+            if (dotp->lhsp()->name() == "super") {
+                if (AstNew* const newExprp = VN_CAST(dotp->rhsp(), New)) {
+                    m_explicitSuperNewp = newExprp;
+                }
             }
         }
         iterateChildren(nodep);
