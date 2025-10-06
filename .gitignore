@@ -1,0 +1,5 @@
+.zig-cache
+zig-out
+include/config_package.h
+include/config_rev.h
+test.v

@@ -1,0 +1,16 @@
+.{
+    .name = .verilator,
+    .version = "5.41.0",
+    .minimum_zig_version = "0.15.1",
+    .fingerprint = 0x7979326077ce6233,
+    .dependencies = .{
+        .verilator = .{
+            .url = "git+https://github.com/verilator/verilator#b4d064d1669cc2a8d921eae64f88f4586042c825",
+            .hash = "N-V-__8AAIR16AajpwHhnr7EeBBEoPp5715hoc4T8HrA5_Vi",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+    },
+}
