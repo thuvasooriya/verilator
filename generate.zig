@@ -45,6 +45,24 @@ pub fn addConfigFiles(b: *std.Build, wf: *std.Build.Step.WriteFile) void {
     _ = wf.add("config_rev.h", config_rev_content);
 }
 
+pub fn generateVerilatedMk(b: *std.Build, upstream: *std.Build.Dependency) std.Build.LazyPath {
+    const process_cmd = b.addSystemCommand(&[_][]const u8{"python3"});
+
+    process_cmd.addFileArg(b.path("process_template.py"));
+    process_cmd.addFileArg(upstream.path("include/verilated.mk.in"));
+
+    return process_cmd.addOutputFileArg("verilated.mk");
+}
+
+pub fn generateVerilatedConfigH(b: *std.Build, upstream: *std.Build.Dependency) std.Build.LazyPath {
+    const process_cmd = b.addSystemCommand(&[_][]const u8{"python3"});
+
+    process_cmd.addFileArg(b.path("process_template.py"));
+    process_cmd.addFileArg(upstream.path("include/verilated_config.h.in"));
+
+    return process_cmd.addOutputFileArg("verilated_config.h");
+}
+
 fn extractGitHash(url: []const u8) ?[]const u8 {
     // URL format: "git+https://github.com/verilator/verilator#<hash>"
     const hash_start = std.mem.lastIndexOf(u8, url, "#") orelse return null;

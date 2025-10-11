@@ -414,6 +414,18 @@ pub fn build(b: *std.Build) void {
     );
     b.getInstallStep().dependOn(&coverage_script.step);
 
+    const includer_script = b.addInstallFile(
+        upstream.path("bin/verilator_includer"),
+        "bin/verilator_includer",
+    );
+    b.getInstallStep().dependOn(&includer_script.step);
+
+    const ccache_report_script = b.addInstallFile(
+        upstream.path("bin/verilator_ccache_report"),
+        "bin/verilator_ccache_report",
+    );
+    b.getInstallStep().dependOn(&ccache_report_script.step);
+
     // Install include files (verilated runtime support)
     const install_include = b.addInstallDirectory(.{
         .source_dir = upstream.path("include"),
@@ -421,6 +433,22 @@ pub fn build(b: *std.Build) void {
         .install_subdir = "include",
     });
     b.getInstallStep().dependOn(&install_include.step);
+
+    // Generate and install verilated.mk from template
+    const verilated_mk = generate.generateVerilatedMk(b, upstream);
+    const install_verilated_mk = b.addInstallFile(
+        verilated_mk,
+        "include/verilated.mk",
+    );
+    b.getInstallStep().dependOn(&install_verilated_mk.step);
+
+    // Generate and install verilated_config.h from template
+    const verilated_config_h = generate.generateVerilatedConfigH(b, upstream);
+    const install_verilated_config_h = b.addInstallFile(
+        verilated_config_h,
+        "include/verilated_config.h",
+    );
+    b.getInstallStep().dependOn(&install_verilated_config_h.step);
 
     const run_cmd = b.addRunArtifact(verilator_exe);
     run_cmd.step.dependOn(b.getInstallStep());
