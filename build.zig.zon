@@ -1,16 +1,21 @@
 .{
     .name = .verilator,
-    .version = "5.41.0",
-    .minimum_zig_version = "0.15.1",
+    .version = "5.44.0",
+    .minimum_zig_version = "0.15.2",
     .fingerprint = 0x7979326077ce6233,
     .dependencies = .{
         .verilator = .{
-            .url = "git+https://github.com/verilator/verilator#b4d064d1669cc2a8d921eae64f88f4586042c825",
-            .hash = "N-V-__8AAIR16AajpwHhnr7EeBBEoPp5715hoc4T8HrA5_Vi",
+            .url = "git+https://github.com/verilator/verilator?ref=v5.044#8df584ca1ddde5c8afbd15dc5fdcb677a78f9af2",
+            .hash = "N-V-__8AAItNnQI8Rn60c2LPUcVNWTT_iuI-MdJW6tGqgtZH",
+        },
+        .flex = .{
+            .url = "git+https://github.com/thuvasooriya/flex#v2.6.4",
+            .hash = "flex-2.6.4-U2-vZh4VAADS021--OKgrDvpVPkh2NBq8a7p1LmrbPpz",
         },
     },
     .paths = .{
         "build.zig",
+        "generate.zig",
         "build.zig.zon",
     },
 }

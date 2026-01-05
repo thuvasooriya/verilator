@@ -1,7 +1,29 @@
 #!/usr/bin/env python3
 """
-Wrapper for astgen that adds --output-dir support for Zig build system.
-Runs astgen in a temp directory then copies outputs to the specified location.
+Wrapper for upstream astgen script to work with Zig build system.
+
+WHY THIS EXISTS:
+- Upstream astgen (src/astgen) generates C++ AST node classes and visitor code
+- It requires running in a directory containing Verilator source files because
+  it reads *.h, *.cpp, *.y files to extract node references and stage ordering
+- It writes output files to the current working directory with no output dir option
+- Zig's build system needs explicit input/output file tracking for caching
+
+WHAT ASTGEN GENERATES:
+- V3Ast__gen_*.h: AST node class declarations and visitor interfaces
+- V3Dfg__gen_*.h: DFG (Data Flow Graph) node definitions
+- V3Const__gen.cpp: Generated constant folding implementations
+
+USAGE IN BUILD:
+  python3 astgen_wrapper.py --astgen <upstream/src/astgen> \
+    --source-dir <upstream/src> \
+    --astdef V3AstNodeDType.h --astdef V3AstNodeExpr.h ... \
+    --dfgdef V3DfgVertices.h \
+    --output-dir <output_dir> \
+    -- [astgen args like --classes or V3Const.cpp]
+
+NOTE: We intentionally use upstream astgen rather than reimplementing it,
+so we automatically get any future AST structure changes from Verilator.
 """
 
 import argparse

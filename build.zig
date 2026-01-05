@@ -12,195 +12,103 @@ comptime {
     }
 }
 
+const cpp_flags = &[_][]const u8{
+    "-std=c++14",
+    "-DYYDEBUG",
+    "-Wall",
+    "-Wextra",
+    "-Wno-unused-parameter",
+    "-Wno-shadow",
+    "-fno-sanitize=undefined", // Disable UBSAN - upstream has undefined behavior
+    "-fwrapv", // Wrap signed integer overflow instead of UB
+};
+
+// Files excluded from verilator_bin compilation:
+// - V3Const.cpp: Content included in generated V3Const__gen.cpp by astgen
+// - Vlc*.cpp: Coverage tool sources (VlcMain.cpp, VlcTop.cpp)
+// - *_test.cpp: Test files (e.g., V3Number_test.cpp in older versions)
+fn isExcludedSource(name: []const u8) bool {
+    if (std.mem.eql(u8, name, "V3Const.cpp")) return true;
+    if (std.mem.startsWith(u8, name, "Vlc")) return true;
+    if (std.mem.endsWith(u8, name, "_test.cpp")) return true;
+    return false;
+}
+
+// AST node definition files - detect which ones exist for version compatibility
+// V3AstNodeStmt.h was added in v5.040, older versions only have DType/Expr/Other
+const ast_node_files = [_][]const u8{
+    "V3AstNodeDType.h",
+    "V3AstNodeExpr.h",
+    "V3AstNodeOther.h",
+    "V3AstNodeStmt.h", // Added in v5.040
+};
+
+fn addAstDefArgs(cmd: *std.Build.Step.Run, src_dir: std.fs.Dir, upstream: *std.Build.Dependency, b: *std.Build) void {
+    for (ast_node_files) |file| {
+        if (src_dir.access(file, .{})) |_| {
+            cmd.addArg("--astdef");
+            cmd.addArg(file);
+        } else |_| {
+            // File doesn't exist in this version, skip it
+            _ = upstream;
+            _ = b;
+        }
+    }
+}
+
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
     const upstream = b.dependency("verilator", .{});
 
+    // Get flex dependency - built for host to run during build
+    const flex_dep = b.dependency("flex", .{});
+    const flex_exe = flex_dep.artifact("flex");
+    const flex_upstream = flex_dep.builder.dependency("flex", .{});
+
+    // Release build by default (use verilator_bin_dbg for debug)
+    const release_optimize = if (optimize == .Debug) .ReleaseFast else optimize;
+
     const verilator_exe = b.addExecutable(.{
         .name = "verilator_bin",
         .root_module = b.createModule(.{
             .target = target,
-            .optimize = optimize,
+            .optimize = release_optimize,
         }),
     });
 
-    const sources = [_][]const u8{
-        "Verilator.cpp",
-        "V3Active.cpp",
-        "V3ActiveTop.cpp",
-        "V3Assert.cpp",
-        "V3AssertPre.cpp",
-        "V3Ast.cpp",
-        "V3AstNodes.cpp",
-        "V3Begin.cpp",
-        "V3Branch.cpp",
-        "V3Broken.cpp",
-        "V3CCtors.cpp",
-        "V3CUse.cpp",
-        "V3Case.cpp",
-        "V3Cast.cpp",
-        "V3Cfg.cpp",
-        "V3CfgBuilder.cpp",
-        "V3CfgLiveVariables.cpp",
-        "V3Class.cpp",
-        "V3Clean.cpp",
-        "V3Clock.cpp",
-        "V3Combine.cpp",
-        "V3Common.cpp",
-        "V3Control.cpp",
-        "V3Coverage.cpp",
-        "V3CoverageJoin.cpp",
-        "V3Dead.cpp",
-        "V3Delayed.cpp",
-        "V3Depth.cpp",
-        "V3DepthBlock.cpp",
-        "V3Descope.cpp",
-        "V3Dfg.cpp",
-        "V3DfgAstToDfg.cpp",
-        "V3DfgBreakCycles.cpp",
-        "V3DfgCache.cpp",
-        "V3DfgColorSCCs.cpp",
-        "V3DfgCse.cpp",
-        "V3DfgDataType.cpp",
-        "V3DfgDecomposition.cpp",
-        "V3DfgDfgToAst.cpp",
-        "V3DfgOptimizer.cpp",
-        "V3DfgPasses.cpp",
-        "V3DfgPeephole.cpp",
-        "V3DfgRegularize.cpp",
-        "V3DfgSynthesize.cpp",
-        "V3DiagSarif.cpp",
-        "V3DupFinder.cpp",
-        "V3EmitCBase.cpp",
-        "V3EmitCConstPool.cpp",
-        "V3EmitCFunc.cpp",
-        "V3EmitCHeaders.cpp",
-        "V3EmitCImp.cpp",
-        "V3EmitCInlines.cpp",
-        "V3EmitCMain.cpp",
-        "V3EmitCMake.cpp",
-        "V3EmitCModel.cpp",
-        "V3EmitCPch.cpp",
-        "V3EmitCSyms.cpp",
-        "V3EmitMk.cpp",
-        "V3EmitMkJson.cpp",
-        "V3EmitV.cpp",
-        "V3EmitXml.cpp",
-        "V3Error.cpp",
-        "V3ExecGraph.cpp",
-        "V3Expand.cpp",
-        "V3File.cpp",
-        "V3FileLine.cpp",
-        "V3Force.cpp",
-        "V3Fork.cpp",
-        "V3FuncOpt.cpp",
-        "V3Gate.cpp",
-        "V3Global.cpp",
-        "V3Graph.cpp",
-        "V3GraphAcyc.cpp",
-        "V3GraphAlg.cpp",
-        "V3GraphPathChecker.cpp",
-        "V3GraphTest.cpp",
-        "V3Hash.cpp",
-        "V3Hasher.cpp",
-        "V3HierBlock.cpp",
-        "V3Inline.cpp",
-        "V3Inst.cpp",
-        "V3InstrCount.cpp",
-        "V3Interface.cpp",
-        "V3Life.cpp",
-        "V3LifePost.cpp",
-        "V3LinkCells.cpp",
-        "V3LinkDot.cpp",
-        "V3LinkInc.cpp",
-        "V3LinkJump.cpp",
-        "V3LinkLValue.cpp",
-        "V3LinkLevel.cpp",
-        "V3LinkParse.cpp",
-        "V3LinkResolve.cpp",
-        "V3Localize.cpp",
-        "V3MergeCond.cpp",
-        "V3Name.cpp",
-        "V3Number.cpp",
-        "V3OptionParser.cpp",
-        "V3Options.cpp",
-        "V3Order.cpp",
-        "V3Os.cpp",
-        "V3OrderGraphBuilder.cpp",
-        "V3OrderMoveGraph.cpp",
-        "V3OrderParallel.cpp",
-        "V3OrderProcessDomains.cpp",
-        "V3OrderSerial.cpp",
-        "V3Param.cpp",
-        "V3ParseGrammar.cpp",
-        "V3ParseImp.cpp",
-        "V3ParseLex.cpp",
-        "V3PreProc.cpp",
-        "V3PreShell.cpp",
-        "V3Premit.cpp",
-        "V3ProtectLib.cpp",
-        "V3Randomize.cpp",
-        "V3Reloop.cpp",
-        "V3Sampled.cpp",
-        "V3Sched.cpp",
-        "V3SchedAcyclic.cpp",
-        "V3SchedPartition.cpp",
-        "V3SchedReplicate.cpp",
-        "V3SchedTiming.cpp",
-        "V3SchedVirtIface.cpp",
-        "V3Scope.cpp",
-        "V3Scoreboard.cpp",
-        "V3Slice.cpp",
-        "V3Split.cpp",
-        "V3SplitAs.cpp",
-        "V3SplitVar.cpp",
-        "V3StackCount.cpp",
-        "V3Stats.cpp",
-        "V3StatsReport.cpp",
-        "V3String.cpp",
-        "V3Subst.cpp",
-        "V3TSP.cpp",
-        "V3Table.cpp",
-        "V3Task.cpp",
-        "V3ThreadPool.cpp",
-        "V3Timing.cpp",
-        "V3Trace.cpp",
-        "V3TraceDecl.cpp",
-        "V3Tristate.cpp",
-        "V3Udp.cpp",
-        "V3Undriven.cpp",
-        "V3Unknown.cpp",
-        "V3Unroll.cpp",
-        "V3UnrollGen.cpp",
-        "V3VariableOrder.cpp",
-        "V3Waiver.cpp",
-        "V3Width.cpp",
-        "V3WidthCommit.cpp",
-        "V3WidthSel.cpp",
+    // Auto-detect source files from upstream src/ directory
+    const src_path = upstream.path("src").getPath(b);
+    var src_dir = std.fs.openDirAbsolute(src_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Failed to open upstream src directory: {}\n", .{err});
+        return;
     };
+    defer src_dir.close();
 
-    for (sources) |src| {
+    var iter = src_dir.iterate();
+    while (iter.next() catch null) |entry| {
+        if (entry.kind != .file) continue;
+        const name = entry.name;
+        if (!std.mem.endsWith(u8, name, ".cpp")) continue;
+        if (isExcludedSource(name)) continue;
+
         verilator_exe.addCSourceFile(.{
-            .file = upstream.path(b.fmt("src/{s}", .{src})),
-            .flags = &.{
-                "-std=c++14",
-                "-DYYDEBUG",
-                "-Wall",
-                "-Wextra",
-                "-Wno-unused-parameter",
-                "-Wno-shadow",
-            },
+            .file = upstream.path(b.fmt("src/{s}", .{name})),
+            .flags = cpp_flags,
         });
     }
 
     verilator_exe.addIncludePath(upstream.path("src"));
     verilator_exe.addIncludePath(upstream.path("include"));
-    verilator_exe.addIncludePath(b.path("include"));
+    verilator_exe.addIncludePath(flex_upstream.path("src")); // FlexLexer.h
     verilator_exe.linkLibCpp();
 
-    if (target.result.os.tag != .windows) {
+    if (target.result.os.tag == .windows) {
+        // Windows API libraries for memory info and crypto
+        verilator_exe.linkSystemLibrary("psapi"); // GetProcessMemoryInfo
+        verilator_exe.linkSystemLibrary("bcrypt"); // BCryptGenRandom
+    } else {
         verilator_exe.linkSystemLibrary("pthread");
     }
 
@@ -214,19 +122,13 @@ pub fn build(b: *std.Build) void {
     const astgen_classes_cmd = b.addSystemCommand(&[_][]const u8{
         "python3",
     });
-    astgen_classes_cmd.addFileArg(b.path("astgen_wrapper.py"));
+    astgen_classes_cmd.addFileArg(b.path("scripts/astgen_wrapper.py"));
     astgen_classes_cmd.addArg("--astgen");
     astgen_classes_cmd.addFileArg(upstream.path("src/astgen"));
     astgen_classes_cmd.addArg("--source-dir");
     astgen_classes_cmd.addDirectoryArg(upstream.path("src"));
-    astgen_classes_cmd.addArg("--astdef");
-    astgen_classes_cmd.addArg("V3AstNodeDType.h");
-    astgen_classes_cmd.addArg("--astdef");
-    astgen_classes_cmd.addArg("V3AstNodeExpr.h");
-    astgen_classes_cmd.addArg("--astdef");
-    astgen_classes_cmd.addArg("V3AstNodeOther.h");
-    astgen_classes_cmd.addArg("--astdef");
-    astgen_classes_cmd.addArg("V3AstNodeStmt.h");
+    // Auto-detect which AST node files exist (V3AstNodeStmt.h added in v5.040)
+    addAstDefArgs(astgen_classes_cmd, src_dir, upstream, b);
     astgen_classes_cmd.addArg("--dfgdef");
     astgen_classes_cmd.addArg("V3DfgVertices.h");
     astgen_classes_cmd.addArg("--output-dir");
@@ -240,19 +142,13 @@ pub fn build(b: *std.Build) void {
     const astgen_const_cmd = b.addSystemCommand(&[_][]const u8{
         "python3",
     });
-    astgen_const_cmd.addFileArg(b.path("astgen_wrapper.py"));
+    astgen_const_cmd.addFileArg(b.path("scripts/astgen_wrapper.py"));
     astgen_const_cmd.addArg("--astgen");
     astgen_const_cmd.addFileArg(upstream.path("src/astgen"));
     astgen_const_cmd.addArg("--source-dir");
     astgen_const_cmd.addDirectoryArg(upstream.path("src"));
-    astgen_const_cmd.addArg("--astdef");
-    astgen_const_cmd.addArg("V3AstNodeDType.h");
-    astgen_const_cmd.addArg("--astdef");
-    astgen_const_cmd.addArg("V3AstNodeExpr.h");
-    astgen_const_cmd.addArg("--astdef");
-    astgen_const_cmd.addArg("V3AstNodeOther.h");
-    astgen_const_cmd.addArg("--astdef");
-    astgen_const_cmd.addArg("V3AstNodeStmt.h");
+    // Auto-detect which AST node files exist (V3AstNodeStmt.h added in v5.040)
+    addAstDefArgs(astgen_const_cmd, src_dir, upstream, b);
     astgen_const_cmd.addArg("--dfgdef");
     astgen_const_cmd.addArg("V3DfgVertices.h");
     astgen_const_cmd.addArg("--output-dir");
@@ -275,20 +171,13 @@ pub fn build(b: *std.Build) void {
 
     astgen_const_obj.addCSourceFile(.{
         .file = astgen_const_output.path(b, "V3Const__gen.cpp"),
-        .flags = &.{
-            "-std=c++14",
-            "-DYYDEBUG",
-            "-Wall",
-            "-Wextra",
-            "-Wno-unused-parameter",
-            "-Wno-shadow",
-        },
+        .flags = cpp_flags,
     });
 
     // Add include paths to the astgen object
     astgen_const_obj.addIncludePath(upstream.path("src"));
     astgen_const_obj.addIncludePath(upstream.path("include"));
-    astgen_const_obj.addIncludePath(b.path("include"));
+    astgen_const_obj.addIncludePath(flex_upstream.path("src"));
     astgen_const_obj.addIncludePath(astgen_classes_output);
     astgen_const_obj.addIncludePath(config_files.getDirectory());
     astgen_const_obj.step.dependOn(&config_files.step);
@@ -321,19 +210,15 @@ pub fn build(b: *std.Build) void {
     // Generate V3Lexer.yy.cpp using Flex + flexfix (depends on Bison for YYSTYPE)
     // Note: This file is #included by V3ParseLex.cpp, not compiled separately
     // Step 1: Run flex to generate intermediate file
-    const flex_lexer = b.addSystemCommand(&[_][]const u8{
-        "flex",
-        "--c++",
-        "-d",
-        "-o",
-    });
+    const flex_lexer = b.addRunArtifact(flex_exe);
+    flex_lexer.addArgs(&.{ "--c++", "-d", "-o" });
     const lexer_pregen = flex_lexer.addOutputFileArg("V3Lexer_pregen.yy.cpp");
     flex_lexer.addFileArg(upstream.path("src/verilog.l"));
     flex_lexer.step.dependOn(&bisonpre_cmd.step);
 
     // Step 2: Run flexfix wrapper to post-process
     const flexfix_lexer = b.addSystemCommand(&[_][]const u8{"python3"});
-    flexfix_lexer.addFileArg(b.path("flexfix_wrapper.py"));
+    flexfix_lexer.addFileArg(b.path("scripts/flexfix_wrapper.py"));
     flexfix_lexer.addArg("--flexfix");
     flexfix_lexer.addFileArg(upstream.path("src/flexfix"));
     flexfix_lexer.addFileArg(lexer_pregen);
@@ -345,19 +230,15 @@ pub fn build(b: *std.Build) void {
 
     // Generate V3PreLex.yy.cpp using Flex + flexfix (two-step process)
     // Step 1: Run flex to generate intermediate file
-    const flex_prelex = b.addSystemCommand(&[_][]const u8{
-        "flex",
-        "--c++",
-        "-d",
-        "-o",
-    });
+    const flex_prelex = b.addRunArtifact(flex_exe);
+    flex_prelex.addArgs(&.{ "--c++", "-d", "-o" });
     const prelex_pregen = flex_prelex.addOutputFileArg("V3PreLex_pregen.yy.cpp");
     flex_prelex.addFileArg(upstream.path("src/V3PreLex.l"));
     flex_prelex.step.dependOn(&bisonpre_cmd.step);
 
     // Step 2: Run flexfix wrapper to post-process
     const flexfix_prelex = b.addSystemCommand(&[_][]const u8{"python3"});
-    flexfix_prelex.addFileArg(b.path("flexfix_wrapper.py"));
+    flexfix_prelex.addFileArg(b.path("scripts/flexfix_wrapper.py"));
     flexfix_prelex.addArg("--flexfix");
     flexfix_prelex.addFileArg(upstream.path("src/flexfix"));
     flexfix_prelex.addFileArg(prelex_pregen);
@@ -369,6 +250,86 @@ pub fn build(b: *std.Build) void {
     verilator_exe.step.dependOn(&flexfix_prelex.step);
 
     b.installArtifact(verilator_exe);
+
+    // Build verilator_bin_dbg (debug version for --debug flag)
+    // Always built with Debug optimization regardless of -Doptimize flag
+    const verilator_dbg_exe = b.addExecutable(.{
+        .name = "verilator_bin_dbg",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = .Debug,
+        }),
+    });
+
+    // Re-iterate source files for debug build
+    var src_dir_dbg = std.fs.openDirAbsolute(src_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Failed to open upstream src directory for debug build: {}\n", .{err});
+        return;
+    };
+    defer src_dir_dbg.close();
+
+    var iter_dbg = src_dir_dbg.iterate();
+    while (iter_dbg.next() catch null) |entry| {
+        if (entry.kind != .file) continue;
+        const name = entry.name;
+        if (!std.mem.endsWith(u8, name, ".cpp")) continue;
+        if (isExcludedSource(name)) continue;
+
+        verilator_dbg_exe.addCSourceFile(.{
+            .file = upstream.path(b.fmt("src/{s}", .{name})),
+            .flags = cpp_flags,
+        });
+    }
+
+    verilator_dbg_exe.addIncludePath(upstream.path("src"));
+    verilator_dbg_exe.addIncludePath(upstream.path("include"));
+    verilator_dbg_exe.addIncludePath(flex_upstream.path("src"));
+    verilator_dbg_exe.linkLibCpp();
+
+    if (target.result.os.tag == .windows) {
+        verilator_dbg_exe.linkSystemLibrary("psapi");
+        verilator_dbg_exe.linkSystemLibrary("bcrypt");
+    } else {
+        verilator_dbg_exe.linkSystemLibrary("pthread");
+    }
+
+    // Share generated files with release build
+    verilator_dbg_exe.addIncludePath(config_files.getDirectory());
+    verilator_dbg_exe.step.dependOn(&config_files.step);
+    verilator_dbg_exe.step.dependOn(&astgen_classes_cmd.step);
+    verilator_dbg_exe.addIncludePath(astgen_classes_output);
+    verilator_dbg_exe.step.dependOn(&bisonpre_cmd.step);
+    verilator_dbg_exe.addIncludePath(bison_output_dir);
+    verilator_dbg_exe.step.dependOn(&flexfix_lexer.step);
+    verilator_dbg_exe.addIncludePath(lexer_output_dir);
+    verilator_dbg_exe.step.dependOn(&flexfix_prelex.step);
+    verilator_dbg_exe.addIncludePath(prelex_output_dir);
+
+    // Build debug version of V3Const__gen object
+    const astgen_const_obj_dbg = b.addObject(.{
+        .name = "V3Const__gen_dbg",
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = .Debug,
+        }),
+    });
+    astgen_const_obj_dbg.step.dependOn(&astgen_const_cmd.step);
+    astgen_const_obj_dbg.step.dependOn(&astgen_classes_cmd.step);
+    astgen_const_obj_dbg.addCSourceFile(.{
+        .file = astgen_const_output.path(b, "V3Const__gen.cpp"),
+        .flags = cpp_flags,
+    });
+    astgen_const_obj_dbg.addIncludePath(upstream.path("src"));
+    astgen_const_obj_dbg.addIncludePath(upstream.path("include"));
+    astgen_const_obj_dbg.addIncludePath(flex_upstream.path("src"));
+    astgen_const_obj_dbg.addIncludePath(astgen_classes_output);
+    astgen_const_obj_dbg.addIncludePath(config_files.getDirectory());
+    astgen_const_obj_dbg.step.dependOn(&config_files.step);
+    astgen_const_obj_dbg.linkLibCpp();
+
+    verilator_dbg_exe.addObject(astgen_const_obj_dbg);
+
+    b.installArtifact(verilator_dbg_exe);
 
     // Build verilator_coverage_bin_dbg (coverage tool)
     const coverage_exe = b.addExecutable(.{
@@ -383,20 +344,18 @@ pub fn build(b: *std.Build) void {
     coverage_exe.addIncludePath(config_files.getDirectory());
     coverage_exe.addIncludePath(upstream.path("include"));
     coverage_exe.addIncludePath(upstream.path("src"));
-    coverage_exe.addIncludePath(b.path("include"));
+    coverage_exe.addIncludePath(flex_upstream.path("src"));
     coverage_exe.step.dependOn(&config_files.step);
+
+    if (target.result.os.tag == .windows) {
+        coverage_exe.linkSystemLibrary("psapi");
+        coverage_exe.linkSystemLibrary("bcrypt");
+    }
 
     // VlcMain.cpp is a unity build that includes other files
     coverage_exe.addCSourceFile(.{
         .file = upstream.path("src/VlcMain.cpp"),
-        .flags = &.{
-            "-std=c++14",
-            "-DYYDEBUG",
-            "-Wall",
-            "-Wextra",
-            "-Wno-unused-parameter",
-            "-Wno-shadow",
-        },
+        .flags = cpp_flags,
     });
 
     b.installArtifact(coverage_exe);
