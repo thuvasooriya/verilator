@@ -15,10 +15,10 @@ VERSION SOURCE:
 - Extracts version from verilator URL tag in build.zig.zon (e.g., #v5.044 -> 5.044.0)
 
 USAGE:
-  python3 process_template.py <input.in> <output>
+  python3 process_template.py <input.in> <output> --cxx <compiler> [--ar <archiver>]
 """
 
-import sys
+import argparse
 import re
 from pathlib import Path
 
@@ -54,18 +54,33 @@ def parse_build_zig_zon():
     return version, str(version_int)
 
 
-if len(sys.argv) != 3:
-    print("Usage: process_template.py <input> <output>", file=sys.stderr)
-    sys.exit(1)
+def is_clang_based(cxx: str) -> bool:
+    """Check if compiler is clang-based (zig c++, clang++, etc.)"""
+    return "zig" in cxx.lower() or "clang" in cxx.lower()
 
-input_file = sys.argv[1]
-output_file = sys.argv[2]
+
+parser = argparse.ArgumentParser(description="Process autoconf templates")
+parser.add_argument("input", help="Input template file (.in)")
+parser.add_argument("output", help="Output file")
+parser.add_argument(
+    "--cxx", default="c++", help="C++ compiler (e.g., zig c++, clang++, g++)"
+)
+parser.add_argument("--ar", default="ar", help="Archiver (e.g., zig ar, llvm-ar, ar)")
+args = parser.parse_args()
 
 package_version, version_integer = parse_build_zig_zon()
 
+# Detect compiler type for flags
+is_clang = is_clang_based(args.cxx)
+
+# Clang uses -std=c++20 for coroutines, GCC uses -fcoroutines
+coroutines_flag = "" if is_clang else "-fcoroutines"
+# Clang uses .gch suffix for precompiled headers
+gch_if_clang = ".gch" if is_clang else ""
+
 substitutions = {
-    "@AR@": "ar",
-    "@CXX@": "c++",
+    "@AR@": args.ar,
+    "@CXX@": args.cxx,
     "@OBJCACHE@": "",
     "@PERL@": "perl",
     "@PYTHON3@": "python3",
@@ -78,9 +93,9 @@ substitutions = {
     "@CFG_CXXFLAGS_STD_NEWEST@": "-std=c++20",
     "@CFG_CXXFLAGS_NO_UNUSED@": "-Wno-unused-parameter -Wno-unused-variable",
     "@CFG_CXXFLAGS_WEXTRA@": "-Wextra",
-    "@CFG_CXXFLAGS_COROUTINES@": "-fcoroutines",
+    "@CFG_CXXFLAGS_COROUTINES@": coroutines_flag,
     "@CFG_CXXFLAGS_PCH_I@": "-include",
-    "@CFG_GCH_IF_CLANG@": "",
+    "@CFG_GCH_IF_CLANG@": gch_if_clang,
     "@CFG_LDFLAGS_VERILATED@": "",
     "@CFG_LDLIBS_THREADS@": "-lpthread",
     "@PACKAGE_NAME@": "Verilator",
@@ -88,11 +103,20 @@ substitutions = {
     "@VERILATOR_VERSION_INTEGER@": version_integer,
 }
 
-with open(input_file, "r") as f:
+with open(args.input, "r") as f:
     content = f.read()
 
 for key, value in substitutions.items():
     content = content.replace(key, value)
 
-with open(output_file, "w") as f:
+# Fix macOS linker flags for zig/clang - replace -Wl,-U,<sym> with -undefined dynamic_lookup
+# The -U flag is not supported by zig's linker, but -undefined dynamic_lookup achieves the same
+if "zig" in args.cxx.lower():
+    content = re.sub(
+        r"LDFLAGS \+= -Wl,-U,\S+,-U,\S+",
+        "LDFLAGS += -Wl,-undefined,dynamic_lookup",
+        content,
+    )
+
+with open(args.output, "w") as f:
     f.write(content)

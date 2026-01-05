@@ -50,25 +50,37 @@ pub fn addConfigFiles(b: *std.Build, wf: *std.Build.Step.WriteFile) void {
     _ = wf.add("config_rev.h", config_rev_content);
 }
 
-pub fn generateVerilatedMk(b: *std.Build, upstream: *std.Build.Dependency) std.Build.LazyPath {
+pub fn generateVerilatedMk(b: *std.Build, upstream: *std.Build.Dependency, cxx: []const u8, ar: []const u8) std.Build.LazyPath {
     const process_cmd = b.addSystemCommand(&[_][]const u8{"python3"});
 
     process_cmd.addFileArg(b.path("scripts/process_template.py"));
     process_cmd.addFileArg(upstream.path("include/verilated.mk.in"));
+    const output = process_cmd.addOutputFileArg("verilated.mk");
 
-    return process_cmd.addOutputFileArg("verilated.mk");
+    // Pass compiler settings to script
+    process_cmd.addArg("--cxx");
+    process_cmd.addArg(cxx);
+    process_cmd.addArg("--ar");
+    process_cmd.addArg(ar);
+
+    return output;
 }
 
-pub fn generateVerilatedConfigH(b: *std.Build, upstream: *std.Build.Dependency) std.Build.LazyPath {
+pub fn generateVerilatedConfigH(b: *std.Build, upstream: *std.Build.Dependency, cxx: []const u8) std.Build.LazyPath {
     const process_cmd = b.addSystemCommand(&[_][]const u8{"python3"});
 
     process_cmd.addFileArg(b.path("scripts/process_template.py"));
     process_cmd.addFileArg(upstream.path("include/verilated_config.h.in"));
+    const output = process_cmd.addOutputFileArg("verilated_config.h");
 
-    return process_cmd.addOutputFileArg("verilated_config.h");
+    // Pass compiler for detection of clang vs gcc flags
+    process_cmd.addArg("--cxx");
+    process_cmd.addArg(cxx);
+
+    return output;
 }
 
-fn extractVersionFromUrl(url: []const u8) ?[]const u8 {
+pub fn extractVersionFromUrl(url: []const u8) ?[]const u8 {
     // URL formats:
     // - "git+https://github.com/verilator/verilator#v5.044"
     // - "git+https://github.com/verilator/verilator?ref=v5.042#<commit>"
