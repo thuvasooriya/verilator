@@ -127,7 +127,3 @@ zig-out/
     └── vltstd/                # standard library
 ```
 
-## license
-
-- build system (this repo): MIT
-- verilator (upstream): LGPL-3.0-only or Artistic-2.0
