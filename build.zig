@@ -134,8 +134,8 @@ fn createGeneratedFiles(
 
     // Open src directory to detect available files
     const src_path = upstream.path("src").getPath(b);
-    var src_dir = std.fs.openDirAbsolute(src_path, .{ .iterate = true }) catch |err| {
-        std.debug.print("Failed to open upstream src directory: {}\n", .{err});
+    var src_dir = std.fs.cwd().openDir(src_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Failed to open upstream src directory '{s}': {}\n", .{ src_path, err });
         @panic("Cannot open upstream src directory");
     };
     defer src_dir.close();
@@ -240,8 +240,8 @@ fn configureVerilatorExe(
 ) void {
     // Auto-detect source files from upstream src/ directory
     const src_path = upstream.path("src").getPath(b);
-    var src_dir = std.fs.openDirAbsolute(src_path, .{ .iterate = true }) catch |err| {
-        std.debug.print("Failed to open upstream src directory: {}\n", .{err});
+    var src_dir = std.fs.cwd().openDir(src_path, .{ .iterate = true }) catch |err| {
+        std.debug.print("Failed to open upstream src directory '{s}': {}\n", .{ src_path, err });
         return;
     };
     defer src_dir.close();
