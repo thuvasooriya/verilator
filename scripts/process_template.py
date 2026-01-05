@@ -109,14 +109,83 @@ with open(args.input, "r") as f:
 for key, value in substitutions.items():
     content = content.replace(key, value)
 
-# Fix macOS linker flags for zig/clang - replace -Wl,-U,<sym> with -undefined dynamic_lookup
-# The -U flag is not supported by zig's linker, but -undefined dynamic_lookup achieves the same
-if "zig" in args.cxx.lower():
+# For verilated.mk, add runtime compiler detection and env var overrides
+if args.output.endswith("verilated.mk"):
+    # Add a header block that handles env var overrides properly
+    # Make has implicit CXX/AR variables, so we need VERILATOR_CXX/VERILATOR_AR
+    # that users can set to override the defaults
+    env_override_block = """
+######################################################################
+# Compiler override via environment variables
+# Set VERILATOR_CXX and VERILATOR_AR to override the defaults
+# Example: VERILATOR_CXX=g++ VERILATOR_AR=ar make
+
+VERILATOR_CXX ?= {cxx}
+VERILATOR_AR ?= {ar}
+""".format(cxx=args.cxx, ar=args.ar)
+
+    # Replace the tool definitions with our override mechanism
     content = re.sub(
-        r"LDFLAGS \+= -Wl,-U,\S+,-U,\S+",
-        "LDFLAGS += -Wl,-undefined,dynamic_lookup",
+        r"^AR = .+\nCXX = .+\nLINK = .+",
+        env_override_block.strip()
+        + "\n\nAR = $(VERILATOR_AR)\nCXX = $(VERILATOR_CXX)\nLINK = $(VERILATOR_CXX)",
         content,
+        flags=re.MULTILINE,
     )
+
+    # Add runtime compiler detection block after CFG_LDLIBS_THREADS
+    # This must be AFTER all static CFG_* definitions so it can override them
+    compiler_detection = """
+######################################################################
+# Runtime compiler detection - adjusts flags based on actual CXX value
+# These override the static CFG_* values above when compiler changes
+
+# Detect if using zig compiler (for linker flag compatibility)
+VK_IS_ZIG := $(if $(findstring zig,$(CXX)),1,)
+
+# Detect if using clang-based compiler (zig, clang++, Apple clang)
+VK_IS_CLANG := $(if $(or $(findstring zig,$(CXX)),$(findstring clang,$(CXX))),1,)
+
+# GCC needs -fcoroutines for coroutine support, clang/zig use -std=c++20
+ifeq ($(VK_IS_CLANG),)
+  CFG_CXXFLAGS_COROUTINES = -fcoroutines
+else
+  CFG_CXXFLAGS_COROUTINES =
+endif
+
+# Clang uses .gch suffix for precompiled headers
+ifeq ($(VK_IS_CLANG),1)
+  CFG_GCH_IF_CLANG = .gch
+else
+  CFG_GCH_IF_CLANG =
+endif
+"""
+
+    # Insert after CFG_LDLIBS_THREADS line (after all static CFG_* definitions)
+    insert_marker = "CFG_LDLIBS_THREADS ="
+    insert_pos = content.find(insert_marker)
+    if insert_pos != -1:
+        # Find end of that line
+        line_end = content.find("\n", insert_pos)
+        if line_end != -1:
+            content = (
+                content[: line_end + 1] + compiler_detection + content[line_end + 1 :]
+            )
+
+    # Replace macOS -U flag handling with runtime detection
+    # Original: LDFLAGS += -Wl,-U,__Z15vl_time_stamp64v,-U,__Z13sc_time_stampv
+    # For zig: LDFLAGS += -Wl,-undefined,dynamic_lookup
+    # For others: keep original
+    macos_ldflags_old = (
+        "  LDFLAGS += -Wl,-U,__Z15vl_time_stamp64v,-U,__Z13sc_time_stampv"
+    )
+    macos_ldflags_new = """  # Zig linker doesn't support -Wl,-U, use -undefined dynamic_lookup instead
+  ifeq ($(VK_IS_ZIG),1)
+    LDFLAGS += -Wl,-undefined,dynamic_lookup
+  else
+    LDFLAGS += -Wl,-U,__Z15vl_time_stamp64v,-U,__Z13sc_time_stampv
+  endif"""
+    content = content.replace(macos_ldflags_old, macos_ldflags_new)
 
 with open(args.output, "w") as f:
     f.write(content)

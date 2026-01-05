@@ -554,6 +554,19 @@ fn addCiTargets(
             .install_subdir = "include",
         });
 
+        // Generate and install verilated.mk with zig as default (encourage Zig adoption)
+        // Users can override via CXX/AR env vars at compile time
+        const verilated_mk = generate.generateVerilatedMk(b, upstream, "zig c++", "zig ar");
+        const install_verilated_mk = b.addInstallFile(
+            verilated_mk,
+            b.fmt("{s}/include/verilated.mk", .{target_str}),
+        );
+        const verilated_config_h = generate.generateVerilatedConfigH(b, upstream, "zig c++");
+        const install_verilated_config_h = b.addInstallFile(
+            verilated_config_h,
+            b.fmt("{s}/include/verilated_config.h", .{target_str}),
+        );
+
         // Create archive after all installs complete
         const archive_name = b.fmt("verilator-{s}-{s}", .{ version, target_str });
 
@@ -568,6 +581,8 @@ fn addCiTargets(
             zip.step.dependOn(&install_verilator_script.step);
             zip.step.dependOn(&install_coverage_script.step);
             zip.step.dependOn(&install_include.step);
+            zip.step.dependOn(&install_verilated_mk.step);
+            zip.step.dependOn(&install_verilated_config_h.step);
             ci_step.dependOn(&zip.step);
         } else {
             const tar = b.addSystemCommand(&.{
@@ -580,6 +595,8 @@ fn addCiTargets(
             tar.step.dependOn(&install_verilator_script.step);
             tar.step.dependOn(&install_coverage_script.step);
             tar.step.dependOn(&install_include.step);
+            tar.step.dependOn(&install_verilated_mk.step);
+            tar.step.dependOn(&install_verilated_config_h.step);
             ci_step.dependOn(&tar.step);
         }
     }

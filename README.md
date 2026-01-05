@@ -67,6 +67,25 @@ zig build -Dcxx=g++ -Dar=ar
 > [!NOTE]
 > `-Dcxx`/`-Dar` take precedence over `-Duse-zig-cc`
 
+### runtime compiler override
+
+the generated `verilated.mk` defaults to `zig c++` but supports runtime override:
+
+```bash
+# override when building verilated designs
+VERILATOR_CXX=g++ VERILATOR_AR=ar make -f Vdesign.mk
+
+# or export for the session
+export VERILATOR_CXX=clang++
+export VERILATOR_AR=llvm-ar
+make -f Vdesign.mk
+```
+
+the makefile automatically detects compiler type (zig/clang/gcc) and adjusts:
+- coroutine flags (`-fcoroutines` for gcc)
+- precompiled header suffix (`.gch` for clang)
+- macos linker flags (`-undefined dynamic_lookup` for zig)
+
 ## building
 
 ```bash

@@ -18,3 +18,4 @@ test_verilator/obj_dir/
 
 # tmp
 bison/
+AGENTS.md
