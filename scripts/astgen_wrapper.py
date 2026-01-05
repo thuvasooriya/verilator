@@ -53,8 +53,13 @@ def main():
 
     args = parser.parse_args()
 
+    # Convert relative paths to absolute before changing directories
+    astgen_path = os.path.abspath(args.astgen)
+    source_dir = os.path.abspath(args.source_dir)
+    output_dir = os.path.abspath(args.output_dir)
+
     # Create output directory if needed
-    os.makedirs(args.output_dir, exist_ok=True)
+    os.makedirs(output_dir, exist_ok=True)
 
     # Create temp directory for astgen to work in
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -62,15 +67,15 @@ def main():
         # Copy Verilator.cpp (for stage ordering)
         src_files = ["Verilator.cpp"]
         for src_file in src_files:
-            src_path = os.path.join(args.source_dir, src_file)
+            src_path = os.path.join(source_dir, src_file)
             if os.path.exists(src_path):
                 shutil.copy(src_path, tmpdir)
 
         # Also need to copy all .h, .cpp, .y files for read_refs
         for ext in ["*.h", "*.cpp", "*.y"]:
-            for filepath in os.listdir(args.source_dir):
+            for filepath in os.listdir(source_dir):
                 if filepath.endswith(ext.replace("*", "")):
-                    src_path = os.path.join(args.source_dir, filepath)
+                    src_path = os.path.join(source_dir, filepath)
                     if os.path.isfile(src_path):
                         try:
                             shutil.copy(src_path, tmpdir)
@@ -80,7 +85,7 @@ def main():
         # Run astgen in temp directory
         cmd = [
             "python3",
-            args.astgen,
+            astgen_path,
             "-I",
             tmpdir,
         ]
@@ -114,7 +119,7 @@ def main():
                 or filename.endswith("__gen.h")
             ):
                 src = os.path.join(tmpdir, filename)
-                dst = os.path.join(args.output_dir, filename)
+                dst = os.path.join(output_dir, filename)
                 shutil.copy(src, dst)
                 print(f"Generated: {filename}")
 
