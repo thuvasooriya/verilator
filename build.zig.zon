@@ -1,0 +1,21 @@
+.{
+    .name = .verilator,
+    .version = "5.46.0",
+    .minimum_zig_version = "0.15.2",
+    .fingerprint = 0x7979326077ce6233,
+    .dependencies = .{
+        .upstream = .{
+            .url = "git+https://github.com/verilator/verilator#v5.046",
+            .hash = "N-V-__8AABDjmgJI4wbntv5seE__SvRxLciFJuI6l8fxeuR6",
+        },
+        .flex = .{
+            .url = "git+https://github.com/thuvasooriya/flex#v2.6.4",
+            .hash = "flex-2.6.4-U2-vZh4VAADS021--OKgrDvpVPkh2NBq8a7p1LmrbPpz",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "generate.zig",
+        "build.zig.zon",
+    },
+}

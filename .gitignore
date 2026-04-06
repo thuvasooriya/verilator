@@ -1,0 +1,21 @@
+.zig-cache
+zig-out
+tmp/
+
+# Python
+.ruff_cache/
+__pycache__/
+*.pyc
+
+# Test artifacts
+test_verilator/obj_dir/
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*~
+
+# tmp
+bison/
+AGENTS.md
